@@ -1,0 +1,289 @@
+[
+  {
+    "room": "Garden",
+    "north": true,
+    "east": true,
+    "south": true,
+    "west": true,
+    "doors": "NESW",
+    "legend": "G"
+  },
+  {
+    "room": "Parlour",
+    "north": false,
+    "east": true,
+    "south": true,
+    "west": true,
+    "doors": "ESW",
+    "legend": "_"
+  },
+  {
+    "room": "Kitchen",
+    "north": false,
+    "east": true,
+    "south": true,
+    "west": false,
+    "doors": "ES",
+    "legend": "K"
+  },
+  {
+    "room": "Dining room",
+    "north": false,
+    "east": true,
+    "south": true,
+    "west": true,
+    "doors": "ESW",
+    "aliases": [
+      "DiningRoom",
+      "Dining"
+    ],
+    "legend": "D"
+  },
+  {
+    "room": "Workshop",
+    "north": true,
+    "east": false,
+    "south": true,
+    "west": false,
+    "doors": "NS",
+    "legend": "W"
+  },
+  {
+    "room": "Bedroom",
+    "north": false,
+    "east": true,
+    "south": true,
+    "west": false,
+    "doors": "ES",
+    "legend": "B"
+  },
+  {
+    "room": "Hall (skill trophies)",
+    "north": true,
+    "east": true,
+    "south": true,
+    "west": true,
+    "doors": "NESW",
+    "aliases": [
+      "Skill",
+      "SkillHall"
+    ],
+    "legend": "H"
+  },
+  {
+    "room": "League hall",
+    "north": false,
+    "east": true,
+    "south": true,
+    "west": true,
+    "doors": "ESW",
+    "aliases": [
+      "LeagueHall",
+      "League"
+    ],
+    "legend": "L"
+  },
+  {
+    "room": "Games room",
+    "north": false,
+    "east": true,
+    "south": true,
+    "west": true,
+    "doors": "ESW",
+    "aliases": [
+      "GamesRoom",
+      "Game",
+      "Games"
+    ],
+    "legend": "Δ"
+  },
+  {
+    "room": "Combat room",
+    "north": false,
+    "east": true,
+    "south": true,
+    "west": true,
+    "doors": "ESW",
+    "aliases": [
+      "CombatRoom",
+      "Combat"
+    ],
+    "legend": "X"
+  },
+  {
+    "room": "Hall (quest trophies)",
+    "north": true,
+    "east": true,
+    "south": true,
+    "west": true,
+    "doors": "NESW",
+    "aliases": [
+      "QuestHall"
+    ],
+    "legend": "Q"
+  },
+  {
+    "room": "Menagerie",
+    "north": true,
+    "east": true,
+    "south": true,
+    "west": true,
+    "doors": "NESW",
+    "legend": "M"
+  },
+  {
+    "room": "Study",
+    "north": false,
+    "east": true,
+    "south": true,
+    "west": true,
+    "doors": "ESW",
+    "legend": "Y"
+  },
+  {
+    "room": "Costume room",
+    "north": false,
+    "east": false,
+    "south": true,
+    "west": false,
+    "doors": "S",
+    "aliases": [
+      "CostumeRoom",
+      "Costume"
+    ],
+    "legend": "O"
+  },
+  {
+    "room": "Chapel",
+    "north": false,
+    "east": true,
+    "south": true,
+    "west": false,
+    "doors": "ES",
+    "legend": "C"
+  },
+  {
+    "room": "Portal chamber",
+    "north": false,
+    "east": false,
+    "south": true,
+    "west": false,
+    "doors": "S",
+    "aliases": [
+      "PortalChamber",
+      "Portal"
+    ],
+    "legend": "P"
+  },
+  {
+    "room": "Formal garden",
+    "north": true,
+    "east": true,
+    "south": true,
+    "west": true,
+    "doors": "NESW",
+    "aliases": [
+      "FormalGarden",
+      "Formal"
+    ],
+    "legend": "F"
+  },
+  {
+    "room": "Throne room",
+    "north": false,
+    "east": false,
+    "south": true,
+    "west": false,
+    "doors": "S",
+    "aliases": [
+      "ThroneRoom",
+      "Throne"
+    ],
+    "legend": "^"
+  },
+  {
+    "room": "Oubliette",
+    "north": true,
+    "east": true,
+    "south": true,
+    "west": true,
+    "doors": "NESW",
+    "legend": "U"
+  },
+  {
+    "room": "Superior garden",
+    "north": true,
+    "east": true,
+    "south": true,
+    "west": true,
+    "doors": "NESW",
+    "aliases": [
+      "SuperiorGarden",
+      "Superior"
+    ],
+    "legend": "S"
+  },
+  {
+    "room": "Dungeon",
+    "north": true,
+    "east": true,
+    "south": true,
+    "west": true,
+    "doors": "NESW",
+    "legend": "d"
+  },
+  {
+    "room": "Portal nexus",
+    "north": true,
+    "east": true,
+    "south": true,
+    "west": true,
+    "doors": "NESW",
+    "aliases": [
+      "PortalNexus",
+      "Nexus"
+    ],
+    "legend": "N"
+  },
+  {
+    "room": "Dungeon corridor",
+    "north": true,
+    "east": false,
+    "south": true,
+    "west": false,
+    "doors": "NS",
+    "aliases": [
+      "DungeonCorridor",
+      "Corridor"
+    ],
+    "legend": "R"
+  },
+  {
+    "room": "Treasure room",
+    "north": false,
+    "east": false,
+    "south": true,
+    "west": false,
+    "doors": "S",
+    "aliases": [
+      "TreasureRoom",
+      "Treasure"
+    ],
+    "legend": "T"
+  },
+  {
+    "room": "Achievement gallery",
+    "north": true,
+    "east": false,
+    "south": true,
+    "west": false,
+    "doors": "NS",
+    "aliases": [
+      "AchievementGallery",
+      "Achievement",
+      "AchiGallery",
+      "Gallery"
+    ],
+    "legend": "A"
+  }
+]
