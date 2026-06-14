@@ -35,6 +35,21 @@
    - 21-room NoExposedDoors config: **100 solutions in ~68s** (12 types, 7×7 grid)
    - See `sat_search.py` for encoding details
 
+8. **`--near-entrance` active bias**:
+   - All three solvers now receive entrance position and actively bias placement
+   - Backtracking: boundary cells closer to entrance are tried first; near rooms come first in room iteration
+   - SAT: distance-from-entrance weighted ×5 in minimization objective
+   - Local: near rooms placed first in `_init_compact`; distance added to repair cost
+   - Was previously only a post-hoc sort
+
+9. **`--goal filled` shape optimization**:
+   - New goal type that maximizes internal adjacencies between rooms
+   - Backtracking: same boundary heuristic as `compact` (cells with more neighbors first)
+   - SAT: BoolVar per adjacent cell pair for "both occupied", `Maximize(sum)`
+   - Local: picks most-connected boundary cell in `_init_compact`; tracks best-by-adjacency in `_repair`
+   - Post-hoc sort subtracts adjacency count so more-filled layouts sort first
+   - Effectively penalizes 1-room-wide branches and thin corridors
+
 # Future Ideas
 
 ## ~~ 1. Symmetry breaking for identical rooms ~~

@@ -70,9 +70,15 @@ class LayoutSearch:
         partial_constraints: Iterable[Constraint],
         final_constraints: Iterable[Constraint] | None = None,
         preplaced: Iterable[Tuple[int, int, Room]] | None = None,
+        goal: str = "none",
+        near_rooms: set[str] | None = None,
+        entrance_pos: tuple[int, int] | None = None,
     ) -> None:
         self.width = width
         self.height = height
+        self._compact = goal in ("compact", "filled")
+        self._near_rooms = near_rooms or set()
+        self._entrance = entrance_pos
         self.partial_constraints = list(partial_constraints)
         self.final_constraints = (
             list(final_constraints)
@@ -84,6 +90,8 @@ class LayoutSearch:
         for room in rooms:
             self.room_counts[room] = self.room_counts.get(room, 0) + 1
         self.unique_rooms = sorted(self.room_counts.keys(), key=rotation_variant_count)
+        if self._near_rooms:
+            self.unique_rooms.sort(key=lambda r: r.name not in self._near_rooms)
         if preplaced:
             for x, y, room in preplaced:
                 self.house.place_room(x, y, room)
@@ -128,9 +136,20 @@ class LayoutSearch:
                         break
         return c
 
-    def _boundary_key(self, pos: tuple[int, int]) -> int:
+    def _boundary_key(self, pos: tuple[int, int]) -> tuple:
         x, y = pos
-        return self._count_fits(x, y)
+        if self._near_rooms and self._entrance:
+            dist = abs(x - self._entrance[0]) + abs(y - self._entrance[1])
+        else:
+            dist = 0
+        if self._compact:
+            occ = sum(
+                1
+                for _, nx, ny in self.house.nearby_coords(x, y)
+                if self.house.has_room(nx, ny)
+            )
+            return (-dist, occ, self._count_fits(x, y))
+        return (-dist, self._count_fits(x, y))
 
     def matches_partial(self) -> bool:
         return all(constraint(self.house) for constraint in self.partial_constraints)

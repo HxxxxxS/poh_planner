@@ -16,6 +16,9 @@ class LocalSearch:
         partial_constraints: Iterable[Constraint],
         final_constraints: Iterable[Constraint] | None = None,
         preplaced: Iterable[Tuple[int, int, Room]] | None = None,
+        goal: str = "none",
+        near_rooms: set[str] | None = None,
+        entrance_pos: tuple[int, int] | None = None,
     ) -> None:
         self.width = width
         self.height = height
@@ -23,6 +26,9 @@ class LocalSearch:
         self.final = list(final_constraints) if final_constraints is not None else []
         self.preplaced = list(preplaced or [])
         self._fixed: set[tuple[int, int]] = {(x, y) for (x, y, _) in self.preplaced}
+        self._near_rooms = near_rooms or set()
+        self._entrance = entrance_pos
+        self._filled = goal == "filled"
 
     def find_solutions(self) -> Iterator[House]:
         seen: set[frozenset[tuple[int, int, str, int]]] = set()
@@ -48,7 +54,10 @@ class LocalSearch:
         for x, y, r in self.preplaced:
             h.place_room(x, y, r)
         remaining = list(self.rooms)
-        random.shuffle(remaining)
+        if self._near_rooms:
+            remaining.sort(key=lambda r: r.name not in self._near_rooms)
+        else:
+            random.shuffle(remaining)
         while remaining:
             boundary: set[tuple[int, int]] = set()
             for (bx, by), _ in h.iter_rooms():
@@ -58,13 +67,23 @@ class LocalSearch:
             if not boundary:
                 return None
             r = remaining.pop()
-            cx, cy = random.choice(list(boundary))
+            if self._filled:
+                cx, cy = max(
+                    boundary,
+                    key=lambda p: sum(
+                        1 for _, nx, ny in h.nearby_coords(*p) if h.has_room(nx, ny)
+                    ),
+                )
+            else:
+                cx, cy = random.choice(list(boundary))
             h.place_room(cx, cy, r.rotated(random.randint(0, 3)))
         return h
 
     def _count_door_cost(self, h: House) -> int:
         c = 0
         for (x, y), r in h.iter_rooms():
+            if self._near_rooms and r.name in self._near_rooms and self._entrance:
+                c += abs(x - self._entrance[0]) + abs(y - self._entrance[1])
             for d, nx, ny in h.nearby_coords(x, y):
                 if not bool(r.doors & d):
                     continue
@@ -169,6 +188,14 @@ class LocalSearch:
                         stack.append((nx, ny))
         return n
 
+    def _adjacency_count(self, h: House) -> int:
+        return sum(
+            1
+            for (x, y) in h.cells
+            for _, nx, ny in h.nearby_coords(x, y)
+            if h.has_room(nx, ny)
+        )
+
     def _repair(self, h: House) -> House | None:
         empty = [
             (x, y)
@@ -178,12 +205,20 @@ class LocalSearch:
         ]
         movable = [(x, y) for (x, y), _ in h.iter_rooms() if (x, y) not in self._fixed]
 
+        best: House | None = None
+        best_adj = -1
+
         for iteration in range(30000):
             cost = self._count_door_cost(h)
             if cost == 0:
                 if self._components(h) > 1:
                     cost = 100
                 else:
+                    if self._filled:
+                        adj = self._adjacency_count(h)
+                        if adj > best_adj:
+                            best = h.clone()
+                            best_adj = adj
                     return h
 
             exposed = self._find_exposed(h)
@@ -221,4 +256,4 @@ class LocalSearch:
                     rx, ry = random.choice(movable)
                     self._try_repair_move(h, rx, ry, empty)
 
-        return None
+        return best if self._filled else None

@@ -17,7 +17,6 @@ from constraints import (
 from local_search import LocalSearch
 from model import Direction, House, Room
 from render import format_legend, legend_entries, render_text
-from sat_search import CpSatSearch
 from search import LayoutSearch
 
 
@@ -194,6 +193,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=60.0,
         help="Time limit in seconds for SAT solver (default: 60.0).",
     )
+    parser.add_argument(
+        "--goal",
+        default="none",
+        choices=["none", "compact", "filled"],
+        help="Optimization goal (default: none). 'compact' biases toward tightly packed layouts. 'filled' penalizes branches and thin corridors.",
+    )
+    parser.add_argument(
+        "--near-entrance",
+        action="append",
+        default=[],
+        help="Guide search to place this room type close to the entrance (repeatable).",
+    )
     return parser
 
 
@@ -317,6 +328,32 @@ def build_final_constraints(allow_exposed: bool) -> list[Constraint] | None:
     return [NoExposedDoorsConstraint()]
 
 
+def _solution_key(
+    house: House, entrance: tuple[int, int], near: set[str], goal: str
+) -> int:
+    xs = [x for (x, y) in house.cells]
+    ys = [y for (x, y) in house.cells]
+    score = 0
+    if goal == "compact":
+        score += (max(xs) - min(xs) + 1) * (max(ys) - min(ys) + 1)
+    if goal == "filled":
+        adj = sum(
+            1
+            for (x, y) in house.cells
+            for _, nx, ny in house.nearby_coords(x, y)
+            if house.has_room(nx, ny)
+        )
+        score -= adj
+    if near:
+        ex, ey = entrance
+        score += sum(
+            abs(x - ex) + abs(y - ey)
+            for (x, y), room in house.cells.items()
+            if room.name in near
+        )
+    return score
+
+
 def _print_usage_and_rooms(parser: argparse.ArgumentParser) -> None:
     parser.print_help()
     keys = sorted(ROOM_CATALOG.items())
@@ -371,6 +408,10 @@ def main() -> None:
     except ValueError as exc:
         print(f"Invalid input: {exc}")
         return
+    goal = args.goal
+    near_rooms: set[str] = set()
+    for name in args.near_entrance:
+        near_rooms.add(_resolve_room_name(name))
     partial_constraints = build_partial_constraints()
     final_constraints = build_final_constraints(args.allow_exposed)
     preplaced = [(entrance_pos[0], entrance_pos[1], ENTRANCE_ROOM)] + [
@@ -384,8 +425,13 @@ def main() -> None:
             partial_constraints,
             final_constraints,
             preplaced,
+            goal=goal,
+            near_rooms=near_rooms,
+            entrance_pos=entrance_pos,
         )
     elif args.method == "sat":
+        from sat_search import CpSatSearch
+
         search = CpSatSearch(
             args.width,
             args.height,
@@ -393,6 +439,9 @@ def main() -> None:
             partial_constraints,
             final_constraints,
             preplaced,
+            goal=goal,
+            near_rooms=near_rooms,
+            entrance_pos=entrance_pos,
         )
     else:
         search = LayoutSearch(
@@ -402,6 +451,9 @@ def main() -> None:
             partial_constraints,
             final_constraints,
             preplaced,
+            goal=goal,
+            near_rooms=near_rooms,
+            entrance_pos=entrance_pos,
         )
     start_time = time.monotonic()
     solutions: list[House] = []
@@ -415,6 +467,8 @@ def main() -> None:
         solutions.append(solution)
         if limit and len(solutions) >= limit:
             break
+    if goal != "none" or near_rooms:
+        solutions.sort(key=lambda h: _solution_key(h, entrance_pos, near_rooms, goal))
     elapsed = time.monotonic() - start_time
     if not solutions:
         print("No layout satisfies the constraints.")

@@ -37,9 +37,16 @@ class CpSatSearch:
         partial_constraints: Iterable[Constraint],
         final_constraints: Iterable[Constraint] | None = None,
         preplaced: Iterable[tuple[int, int, Room]] | None = None,
+        goal: str = "none",
+        near_rooms: set[str] | None = None,
+        entrance_pos: tuple[int, int] | None = None,
     ) -> None:
         self.width = width
         self.height = height
+        self._compact = goal in ("compact", "filled")
+        self._filled = goal == "filled"
+        self._near_rooms = near_rooms or set()
+        self._entrance = entrance_pos
         partial = list(partial_constraints)
         self._partial = partial
         self.final = (
@@ -87,6 +94,11 @@ class CpSatSearch:
         if self._require_connectivity:
             total = len(self._rooms) + len(self.preplaced)
             self._add_connectivity(model, tv, cells, total)
+
+        if self._filled:
+            self._add_filled_objective(model, tv, cells)
+        elif self._compact or self._near_rooms:
+            self._add_compactness_objective(model, tv, cells)
 
         all_vars: list[cp_model.IntVar] = []
         for x in range(self.width):
@@ -338,6 +350,65 @@ class CpSatSearch:
                     bad.append((ti, ri))
         if bad:
             model.AddForbiddenAssignments([tv[x, y], rv[x, y]], bad)
+
+    def _add_compactness_objective(
+        self,
+        model: cp_model.CpModel,
+        tv: dict[tuple[int, int], cp_model.IntVar],
+        cells: list[tuple[int, int]],
+    ) -> None:
+        if self._entrance:
+            ex, ey = self._entrance
+        elif self.preplaced:
+            ex, ey = self.preplaced[0][0], self.preplaced[0][1]
+        else:
+            ex, ey = cells[0]
+
+        # Map near-entrance room names to type indices
+        near_types: dict[int, str] = {}
+        for i, room in enumerate(self._unique, start=1):
+            if room.name in self._near_rooms:
+                near_types[i] = room.name
+
+        terms: list[cp_model.LinearExpr] = []
+        for x, y in cells:
+            dist = abs(x - ex) + abs(y - ey)
+            b = model.NewBoolVar(f"cobj_{x}_{y}")
+            model.Add(tv[x, y] != 0).OnlyEnforceIf(b)
+            model.Add(tv[x, y] == 0).OnlyEnforceIf(b.Not())
+            terms.append(b * dist)
+
+            # Extra weight for near-entrance room types
+            for ti in near_types:
+                nb = model.NewBoolVar(f"near_{near_types[ti]}_{x}_{y}")
+                model.Add(tv[x, y] == ti).OnlyEnforceIf(nb)
+                model.Add(tv[x, y] != ti).OnlyEnforceIf(nb.Not())
+                terms.append(nb * dist * 5)
+
+        model.Minimize(sum(terms))
+
+    def _add_filled_objective(
+        self,
+        model: cp_model.CpModel,
+        tv: dict[tuple[int, int], cp_model.IntVar],
+        cells: list[tuple[int, int]],
+    ) -> None:
+        occ: dict[tuple[int, int], cp_model.IntVar] = {}
+        for x, y in cells:
+            b = model.NewBoolVar(f"focc_{x}_{y}")
+            model.Add(tv[x, y] != 0).OnlyEnforceIf(b)
+            model.Add(tv[x, y] == 0).OnlyEnforceIf(b.Not())
+            occ[x, y] = b
+        adj: list[cp_model.IntVar] = []
+        for x, y in cells:
+            for nx, ny in _get_neighbors(x, y, self.width, self.height):
+                if (x, y) < (nx, ny):
+                    b = model.NewBoolVar(f"fadj_{x}_{y}_{nx}_{ny}")
+                    model.Add(b <= occ[x, y])
+                    model.Add(b <= occ[nx, ny])
+                    model.Add(b >= occ[x, y] + occ[nx, ny] - 1)
+                    adj.append(b)
+        model.Maximize(sum(adj))
 
     def _has_door(self, type_idx: int, rot: int, d: Direction) -> bool:
         if type_idx == 0:

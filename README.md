@@ -6,6 +6,46 @@ Specify room types and counts, and the solver finds all valid arrangements that 
 
 ---
 
+## Example output:
+
+```
+$ source .venv/bin/activate && python main.py --method sat --max-solutions 1 --pin-room 1,0=Garden --pin-room -1,0=Garden --pin-room 0,1=Garden --pin-room 0,-1=Garden --room Portal=5 --room Nexus --room Gallery --room Costume --room Chapel --room Dining --room Kitchen --room Skill --room Bedroom=2 --room Study --room Workshop --near-entrance Nexus --near-entrance Gallery --goal filled
+
+Solution 1:
+      ┌─┐┌─┐   
+      │P││P│   
+      └ ┘└ ┘   
+   ┌─┐┌ ┐┌ ┐┌─┐
+   │B  G  H  P│
+   └ ┘└ ┘└ ┘└─┘
+┌─┐┌ ┐┌ ┐┌ ┐┌─┐
+│P  G  G  G  K│
+└─┘└ ┘└ ┘└ ┘└ ┘
+┌─┐┌ ┐┌ ┐┌ ┐┌ ┐
+│P  N  G  B││W│
+└─┘└ ┘└ ┘└─┘└ ┘
+┌─┐┌ ┐┌ ┐┌─┐┌ ┐
+│O  D  Y  A  C│
+└─┘└─┘└─┘└─┘└─┘
+
+A = Achievement gallery
+B = Bedroom
+C = Chapel
+D = Dining room
+G = Garden
+H = Hall (skill trophies)
+K = Kitchen
+N = Portal nexus
+O = Costume room
+P = Portal chamber
+W = Workshop
+Y = Study
+
+Elapsed: 0.73s
+```
+
+---
+
 ## Usage
 
 List available room types:
@@ -50,6 +90,22 @@ Permit doors to face empty tiles (disables the no-exposed-doors rule):
 python main.py --room Portal=4 --allow-exposed
 ```
 
+Prefer certain rooms near the entrance (repeatable):
+
+```
+python main.py --room Portal=3 --room Kitchen --room Parlour --near-entrance Portal --near-entrance Kitchen
+```
+
+The solver biases placement of specified rooms toward the entrance tile (center by default). All three solvers use this during search, not just as a post-filter.
+
+Optimize layout shape:
+
+```
+python main.py --room Portal=5 --room Kitchen --goal filled
+```
+
+`--goal compact` minimizes bounding-box area; `--goal filled` maximizes internal adjacencies (penalizes branches and thin corridors).
+
 ---
 
 ## Rooms
@@ -91,6 +147,10 @@ Each door configuration is a bitmask (N=1, E=2, S=4, W=8). Rooms are rotatable d
 - `main.py` — CLI entry point
 
 The solver uses a flood-fill boundary approach: only cells adjacent to placed rooms are candidate positions, and the empty branch prunes when leaving a cell empty would expose a door.
+
+The `--near-entrance` flag biases search toward placing specified rooms close to the entrance: the backtracking solver prioritizes closer boundary cells and tries near rooms first, the SAT solver weights their distance in its objective, and the local solver places them first during initialization and adds a distance term to its repair cost.
+
+The `--goal compact` and `--goal filled` flags optimize layout shape. `compact` minimizes the bounding-box area; `filled` maximizes internal adjacencies between rooms, pushing the solver toward solid shapes that avoid 1-room-wide branches.
 
 ---
 
