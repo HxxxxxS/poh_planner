@@ -12,7 +12,6 @@
 3. **Incremental exposed door check**:
    - When a boundary cell is left permanently empty, checks if adjacent rooms have doors facing it
    - If so, prunes immediately instead of waiting for final constraint
-   - Respects `allow_exposed_doors` flag (Garden is exempt)
 
 4. **`--max-solutions` CLI flag**:
    - Stops enumeration after N solutions (default 0 = all)
@@ -130,3 +129,53 @@ exhausting the tree.
 This is already implemented and available. Users with large room
 configs should always use it unless they explicitly need exhaustive
 enumeration.
+
+## 6. OR-Tools CP-SAT solver (`--method sat`, `sat_search.py`)
+
+A third search method powered by Google OR-Tools CP-SAT solver.
+
+**Interface**: Same `CpSatSearch` class matching `LayoutSearch`/`LocalSearch` interface.
+
+**Encoding**:
+
+- Per-cell variables: `cell_type` (0=empty, 1..K=room type) and `cell_rot` (0..3)
+- Room count constraints via boolean indicator variables with `OnlyEnforceIf`
+- Door matching: `AddForbiddenAssignments` forbidding pairs of adjacent cells where door directions mismatch
+- NoExposedDoors: additional forbidden pairs for occupied-empty pairs with exposed doors
+- No-isolated-room constraint: every occupied cell must have at least one occupied neighbor
+- BFS reachability connectivity: BoolVar layers propagating reachable[0..T] from entrance, final layer enforces all occupied cells reachable
+- Iterative loop: after each solution, checks all final constraints and blocks the assignment with `AddForbiddenAssignments` if invalid
+
+**CLI**: `--method sat` with optional `--time-limit SECONDS` (default 60.0).
+
+### Bugs Fixed
+
+1. **`allow_exposed_doors` removed** (`main.py:78`, `constraints.py:46`): The `allow_exposed_doors` field (previously `True` only for Garden) was removed entirely. No room is exempt from the NoExposedDoors rule — every room must have no exposed doors. The escape hatch in `NoExposedDoorsConstraint`, the SAT model's `_allow_exposed`, and the Garden catalog entry were all cleaned up.
+
+2. **`_add_count_constraints` double-counts preplaced rooms** (`sat_search.py:255`): `sum(flags) == total - pre` was wrong because `sum(flags)` includes preplaced cells. Fixed to `sum(flags) == total`.
+
+3. **`_type_idx` matches on name+doors only** (`sat_search.py:237`): Preplaced Garden matched wrong `_unique` entry because `_type_idx` only checked name and doors. Fixed to `r == room` (full frozen dataclass equality).
+
+### Edge Constraints
+
+`_add_edge_constraints` (`sat_search.py:306`) forbids boundary cells from having outward-facing doors (unless the room allows exposed doors, which no room currently does). This prevents the solver from producing edge-exposed door layouts in the first place, rather than relying on the post-solve check to reject them.
+
+### Connectivity Encoding
+
+Replaced distance-based encoding (IntVar comparisons, slow) with BFS reachability encoding using only BoolVars:
+
+- Entrance cell is reachable at layer 0
+- `reachable[t][c] = occ[c] AND (reachable[t-1][c] OR any neighbor reachable[t-1])`
+- All occupied cells must be reachable within `total_rooms` BFS steps
+- Only linear constraints on BoolVars — CP-SAT handles these efficiently
+
+**Performance** (21-room NoExposedDoors config: `Garden=3, Portal=5, Bedroom=2, ...` 12 types, 7×7 grid, strict no-exemptions):
+
+Before fixes: timeouts (180s+), solver found 19-20 rooms with infinite loops in post-check
+After all fixes + BFS connectivity + edge constraints: **SAT — 100 solutions in ~68s** (found 4 solutions in 1.87s, up to 100 in 68s)
+
+**Result**: The 21-room NoExposedDoors layout **IS SAT** — at least 100 valid connected solutions exist with all constraints satisfied and no exemptions.
+
+**`--time-limit`**: Only affects `--method sat`. Other methods ignore it.
+
+**`--max-solutions`**: SAT solver internally limits solution enumeration; the outer loop also applies the limit.

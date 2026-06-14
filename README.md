@@ -32,6 +32,18 @@ Stop after finding a few solutions:
 python main.py --room Portal=8 --max-solutions 3
 ```
 
+Use the SAT solver for large configs (much faster for complex layouts):
+
+```
+python main.py --room Portal=5 --room Nexus --room Gallery --method sat
+```
+
+Set a time limit for the SAT solver (default 60s):
+
+```
+python main.py --room Portal=8 --method sat --time-limit 120
+```
+
 Permit doors to face empty tiles (disables the no-exposed-doors rule):
 
 ```
@@ -64,7 +76,7 @@ Each door configuration is a bitmask (N=1, E=2, S=4, W=8). Rooms are rotatable d
 
 **Connectivity** — All rooms must form a single connected component.
 
-**No Exposed Doors** — Doors must not face empty tiles (disable with `--allow-exposed`). Rooms can opt out via `allow_exposed_doors` flag (e.g., the Garden entrance).
+**No Exposed Doors** — Doors must not face empty tiles or the grid boundary (disable with `--allow-exposed`). All rooms are subject to this rule — no exemptions.
 
 ---
 
@@ -73,6 +85,8 @@ Each door configuration is a bitmask (N=1, E=2, S=4, W=8). Rooms are rotatable d
 - `model.py` — `Direction` (IntFlag), `Room`, `House` grid
 - `constraints.py` — Modular constraint callables
 - `search.py` — Backtracking solver with dynamic boundary set
+- `local_search.py` — Iterative repair / local search solver
+- `sat_search.py` — OR-Tools CP-SAT solver (fastest for large configs)
 - `render.py` — ASCII box-drawing layout output
 - `main.py` — CLI entry point
 

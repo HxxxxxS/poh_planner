@@ -83,11 +83,14 @@ class LayoutSearch:
         self.room_counts: dict[Room, int] = {}
         for room in rooms:
             self.room_counts[room] = self.room_counts.get(room, 0) + 1
-        self.unique_rooms = list(self.room_counts.keys())
+        self.unique_rooms = sorted(self.room_counts.keys(), key=rotation_variant_count)
         if preplaced:
             for x, y, room in preplaced:
                 self.house.place_room(x, y, room)
-        self.boundary: list[tuple[int, int]] = sorted(self._calc_boundary())
+        self.boundary: list[tuple[int, int]] = sorted(
+            self._calc_boundary(), key=self._boundary_key
+        )
+        self._dead: set[tuple[int, int]] = set()
         self._check_exposed = any(
             isinstance(c, NoExposedDoorsConstraint) for c in self.final_constraints
         )
@@ -102,13 +105,32 @@ class LayoutSearch:
                     boundary.add((nx, ny))
         return boundary
 
+    def _count_fits(self, x: int, y: int) -> int:
+        c = 0
+        for room in self.unique_rooms:
+            if self.room_counts.get(room, 0) == 0:
+                continue
+            for rotation in range(4):
+                r = room if room.doors == FULL_DOOR_MASK else room.rotated(rotation)
+                ok = True
+                for direction, nx, ny in self.house.nearby_coords(x, y):
+                    n = self.house.get_room(nx, ny)
+                    if n is None:
+                        continue
+                    rh = bool(r.doors & direction)
+                    nh = bool(n.doors & OPPOSITE_DIRECTION[direction])
+                    if rh != nh:
+                        ok = False
+                        break
+                if ok:
+                    c += 1
+                    if room.doors == FULL_DOOR_MASK:
+                        break
+        return c
+
     def _boundary_key(self, pos: tuple[int, int]) -> int:
         x, y = pos
-        return -sum(
-            1
-            for dx, dy in [(0, -1), (1, 0), (0, 1), (-1, 0)]
-            if (x + dx, y + dy) in self.house.cells
-        )
+        return self._count_fits(x, y)
 
     def matches_partial(self) -> bool:
         return all(constraint(self.house) for constraint in self.partial_constraints)
@@ -135,7 +157,7 @@ class LayoutSearch:
     ) -> Iterator[House]:
         self.house.place_room(x, y, room)
         added = self._add_to_boundary(x, y)
-        if self.matches_partial():
+        if self.matches_partial() and not self._exposes_dead_room(x, y):
             yield from self._backtrack(seen)
         self._remove_from_boundary(added)
         self.house.remove_room(x, y)
@@ -143,7 +165,11 @@ class LayoutSearch:
     def _add_to_boundary(self, x: int, y: int) -> set[tuple[int, int]]:
         added: set[tuple[int, int]] = set()
         for _, nx, ny in self.house.nearby_coords(x, y):
-            if not self.house.has_room(nx, ny) and (nx, ny) not in self.boundary:
+            if (
+                not self.house.has_room(nx, ny)
+                and (nx, ny) not in self.boundary
+                and (nx, ny) not in self._dead
+            ):
                 added.add((nx, ny))
         self.boundary.extend(added)
         self.boundary.sort(key=self._boundary_key)
@@ -174,6 +200,15 @@ class LayoutSearch:
                 continue
             seen_masks.add(mask)
             yield from self._place_room_and_recurse(rotated_room, x, y, seen)
+
+    def _exposes_dead_room(self, x: int, y: int) -> bool:
+        room = self.house.get_room(x, y)
+        if room is None or room.allow_exposed_doors:
+            return False
+        for direction, nx, ny in self.house.nearby_coords(x, y):
+            if bool(room.doors & direction) and (nx, ny) in self._dead:
+                return True
+        return False
 
     def _would_expose(self, x: int, y: int) -> bool:
         for direction, nx, ny in self.house.nearby_coords(x, y):
@@ -210,7 +245,11 @@ class LayoutSearch:
             self.room_counts[room] = count - 1
             yield from self._try_room_placements(room, x, y, seen)
             self.room_counts[room] = count
-        if self.matches_partial():
+        placed = sum(self.room_counts.values())
+        if placed <= len(self.boundary) and self.matches_partial():
             if not self._check_exposed or not self._would_expose(x, y):
+                self._dead.add((x, y))
                 yield from self._backtrack(seen)
-        self.boundary.append((x, y))
+                self._dead.discard((x, y))
+        if not self.house.has_room(x, y) and (x, y) not in self.boundary:
+            self.boundary.append((x, y))

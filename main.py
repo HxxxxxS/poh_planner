@@ -14,8 +14,10 @@ from constraints import (
     DoorMatchingConstraint,
     NoExposedDoorsConstraint,
 )
+from local_search import LocalSearch
 from model import Direction, House, Room
 from render import format_legend, legend_entries, render_text
+from sat_search import CpSatSearch
 from search import LayoutSearch
 
 
@@ -73,7 +75,7 @@ def _load_room_catalog() -> Tuple[dict[str, Room], dict[str, str]]:
         room = Room(
             canonical,
             mask,
-            canonical == "Garden",
+            False,
             display_name=name,
             aliases=(canonical,) + tuple(normalized_aliases),
             legend=legend,
@@ -118,7 +120,6 @@ ENTRANCE_ROOM = ROOM_CATALOG.get(
     Room(
         "Garden",
         Direction.N | Direction.E | Direction.S | Direction.W,
-        allow_exposed_doors=True,
     ),
 )
 
@@ -179,7 +180,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-solutions",
         type=int,
         default=0,
-        help="Stop after finding N solutions (0 = find all).",
+        help="Stop after finding N solutions (0 = find all; SAT method defaults to 1).",
+    )
+    parser.add_argument(
+        "--method",
+        default="backtracking",
+        choices=["backtracking", "local", "sat"],
+        help="Search algorithm to use (default: backtracking).",
+    )
+    parser.add_argument(
+        "--time-limit",
+        type=float,
+        default=60.0,
+        help="Time limit in seconds for SAT solver (default: 60.0).",
     )
     return parser
 
@@ -281,7 +294,16 @@ def expand_rooms(counts: dict[str, int], pinned_counts: Counter[str]) -> list[Ro
             raise ValueError("Pinned rooms exceed requested counts")
         base = ROOM_CATALOG[name]
         for _ in range(extra):
-            rooms.append(Room(base.name, base.doors, base.allow_exposed_doors))
+            rooms.append(
+                Room(
+                    base.name,
+                    base.doors,
+                    base.allow_exposed_doors,
+                    base.display_name,
+                    base.aliases,
+                    base.legend,
+                )
+            )
     return rooms
 
 
@@ -354,18 +376,42 @@ def main() -> None:
     preplaced = [(entrance_pos[0], entrance_pos[1], ENTRANCE_ROOM)] + [
         (coord[0], coord[1], room) for coord, room in pinned_rooms.items()
     ]
-    search = LayoutSearch(
-        args.width,
-        args.height,
-        rooms,
-        partial_constraints,
-        final_constraints,
-        preplaced,
-    )
+    if args.method == "local":
+        search = LocalSearch(
+            args.width,
+            args.height,
+            rooms,
+            partial_constraints,
+            final_constraints,
+            preplaced,
+        )
+    elif args.method == "sat":
+        search = CpSatSearch(
+            args.width,
+            args.height,
+            rooms,
+            partial_constraints,
+            final_constraints,
+            preplaced,
+        )
+    else:
+        search = LayoutSearch(
+            args.width,
+            args.height,
+            rooms,
+            partial_constraints,
+            final_constraints,
+            preplaced,
+        )
     start_time = time.monotonic()
     solutions: list[House] = []
     limit = args.max_solutions or None
-    for solution in search.find_solutions():
+    if args.method == "sat":
+        sat_max = limit or 100
+        find_kwargs = dict(time_limit=args.time_limit, max_solutions=sat_max)
+    else:
+        find_kwargs = {}
+    for solution in search.find_solutions(**find_kwargs):
         solutions.append(solution)
         if limit and len(solutions) >= limit:
             break
