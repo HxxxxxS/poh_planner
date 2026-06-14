@@ -399,7 +399,7 @@ class CpSatSearch:
             model.Add(tv[x, y] != 0).OnlyEnforceIf(b)
             model.Add(tv[x, y] == 0).OnlyEnforceIf(b.Not())
             occ[x, y] = b
-        adj: list[cp_model.IntVar] = []
+        terms: list[cp_model.LinearExpr] = []
         for x, y in cells:
             for nx, ny in _get_neighbors(x, y, self.width, self.height):
                 if (x, y) < (nx, ny):
@@ -407,8 +407,22 @@ class CpSatSearch:
                     model.Add(b <= occ[x, y])
                     model.Add(b <= occ[nx, ny])
                     model.Add(b >= occ[x, y] + occ[nx, ny] - 1)
-                    adj.append(b)
-        model.Maximize(sum(adj))
+                    terms.append(-b)
+        if self._near_rooms and self._entrance:
+            ex, ey = self._entrance
+            near_types = {
+                i: r.name
+                for i, r in enumerate(self._unique, start=1)
+                if r.name in self._near_rooms
+            }
+            for x, y in cells:
+                dist = abs(x - ex) + abs(y - ey)
+                for ti in near_types:
+                    nb = model.NewBoolVar(f"fnear_{near_types[ti]}_{x}_{y}")
+                    model.Add(tv[x, y] == ti).OnlyEnforceIf(nb)
+                    model.Add(tv[x, y] != ti).OnlyEnforceIf(nb.Not())
+                    terms.append(nb * dist * 5)
+        model.Minimize(sum(terms))
 
     def _has_door(self, type_idx: int, rot: int, d: Direction) -> bool:
         if type_idx == 0:
