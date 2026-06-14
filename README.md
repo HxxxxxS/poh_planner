@@ -9,24 +9,28 @@ Specify room types and counts, and the solver finds all valid arrangements that 
 ## Example output:
 
 ```
-$ source .venv/bin/activate && python main.py --method sat --max-solutions 1 --pin-room 1,0=Garden --pin-room -1,0=Garden --pin-room 0,1=Garden --pin-room 0,-1=Garden --room Portal=5 --room Nexus --room Gallery --room Costume --room Chapel --room Dining --room Kitchen --room Skill --room Bedroom=2 --room Study --room Workshop --near-entrance Nexus --near-entrance Gallery --goal filled
+$ source .venv/bin/activate && python main.py --method sat --max-solutions 1 --goal filled \
+--pin-room 1,0=Garden --pin-room -1,0=Garden --pin-room 0,1=Garden --pin-room 0,-1=Garden \
+--room Portal=5 --room Nexus --room Gallery --room Costume --room Chapel --room Dining \
+--room Kitchen --room Skill --room Bedroom=2 --room Study --room Workshop\
+--near-entrance Nexus --near-entrance Gallery;
 
 Solution 1:
-      ┌─┐┌─┐   
-      │P││P│   
-      └ ┘└ ┘   
-   ┌─┐┌ ┐┌ ┐┌─┐
-   │B  G  H  P│
-   └ ┘└ ┘└ ┘└─┘
-┌─┐┌ ┐┌ ┐┌ ┐┌─┐
-│P  G  G  G  K│
-└─┘└ ┘└ ┘└ ┘└ ┘
-┌─┐┌ ┐┌ ┐┌ ┐┌ ┐
-│P  N  G  B││W│
-└─┘└ ┘└ ┘└─┘└ ┘
-┌─┐┌ ┐┌ ┐┌─┐┌ ┐
-│O  D  Y  A  C│
-└─┘└─┘└─┘└─┘└─┘
+   ┌─┐┌─┐         
+   │O││P│         
+   └ ┘└ ┘         
+┌─┐┌ ┐┌ ┐┌─┐      
+│K  N  G  B│      
+└ ┘└ ┘└ ┘└ ┘      
+┌ ┐┌ ┐┌ ┐┌ ┐┌─┐┌─┐
+│D  G  G  G  A  P│
+└ ┘└ ┘└ ┘└ ┘└─┘└─┘
+┌ ┐┌ ┐┌ ┐┌ ┐┌─┐   
+│W││Y  G  H  P│   
+└ ┘└ ┘└ ┘└ ┘└─┘   
+┌ ┐┌ ┐┌ ┐┌ ┐      
+│P││C  B││P│      
+└─┘└─┘└─┘└─┘      
 
 A = Achievement gallery
 B = Bedroom
@@ -41,7 +45,7 @@ P = Portal chamber
 W = Workshop
 Y = Study
 
-Elapsed: 0.73s
+Elapsed: 0.78s
 ```
 
 ---

@@ -16,6 +16,7 @@ N, E, S, W = 1, 2, 4, 8
 # Constraints
 
 # Constraints are modular and toggleable.
+
 ## Core Rules
 
     Door Matching
@@ -49,6 +50,7 @@ N, E, S, W = 1, 2, 4, 8
     Prune invalid partial layouts early
 
 ## Keep iteration deterministic.
+
 # Tech
 
     Python 3.11+
@@ -64,6 +66,7 @@ render.py
 main.py
 
 # Guidelines
+
 ## Always
 
     Enforce constraints through functions (not inline logic)
@@ -75,6 +78,8 @@ main.py
     Hardcode constraint assumptions in search logic
 
     Introduce randomness in core solver
+
+    Push to remote — user handles that manually
 
 # Goal
 
