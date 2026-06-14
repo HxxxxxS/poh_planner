@@ -95,6 +95,9 @@ class House:
     def iter_rooms(self) -> Iterator[Tuple[Tuple[int, int], Room]]:
         yield from self.cells.items()
 
+    def placed_coords(self) -> set[Tuple[int, int]]:
+        return set(self.cells.keys())
+
     def clone(self) -> "House":
         return House(self.width, self.height, dict(self.cells))
 

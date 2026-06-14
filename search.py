@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from typing import Iterable, Iterator, Tuple
 
-from model import DIRECTION_VECTORS, FULL_DOOR_MASK, House, Room
-from constraints import Constraint
+from model import DIRECTION_VECTORS, FULL_DOOR_MASK, OPPOSITE_DIRECTION, House, Room
+from constraints import Constraint, NoExposedDoorsConstraint
 
 
-def _rotate_coords(x: int, y: int, width: int, height: int, rotation: int) -> tuple[int, int]:
+def _rotate_coords(
+    x: int, y: int, width: int, height: int, rotation: int
+) -> tuple[int, int]:
     rotation = rotation % 4
     if rotation == 0:
         return x, y
@@ -39,7 +41,9 @@ def rotate_house(house: House, rotation: int) -> House:
     return rotated
 
 
-def canonical_layout_signature(house: House) -> tuple[int, int, tuple[Tuple[int, int, str, int], ...]]:
+def canonical_layout_signature(
+    house: House,
+) -> tuple[int, int, tuple[Tuple[int, int, str, int], ...]]:
     signatures = []
     for rotation in range(4):
         rotated = rotate_house(house, rotation)
@@ -71,7 +75,9 @@ class LayoutSearch:
         self.height = height
         self.partial_constraints = list(partial_constraints)
         self.final_constraints = (
-            list(final_constraints) if final_constraints is not None else list(self.partial_constraints)
+            list(final_constraints)
+            if final_constraints is not None
+            else list(self.partial_constraints)
         )
         self.house = House(width, height)
         self.room_counts: dict[Room, int] = {}
@@ -81,18 +87,28 @@ class LayoutSearch:
         if preplaced:
             for x, y, room in preplaced:
                 self.house.place_room(x, y, room)
-        self.fill_positions = [
-            (x, y)
-            for y in range(height)
-            for x in range(width)
-            if not self.house.has_room(x, y)
-        ]
+        self.boundary: list[tuple[int, int]] = sorted(self._calc_boundary())
+        self._check_exposed = any(
+            isinstance(c, NoExposedDoorsConstraint) for c in self.final_constraints
+        )
 
-    def _has_adjacent_room(self, x: int, y: int) -> bool:
-        for _, nx, ny in self.house.nearby_coords(x, y):
-            if self.house.has_room(nx, ny):
-                return True
-        return False
+    def _calc_boundary(self) -> set[tuple[int, int]]:
+        if not self.house.cells:
+            return {(0, 0)}
+        boundary: set[tuple[int, int]] = set()
+        for (x, y), _ in self.house.iter_rooms():
+            for _, nx, ny in self.house.nearby_coords(x, y):
+                if not self.house.has_room(nx, ny):
+                    boundary.add((nx, ny))
+        return boundary
+
+    def _boundary_key(self, pos: tuple[int, int]) -> int:
+        x, y = pos
+        return -sum(
+            1
+            for dx, dy in [(0, -1), (1, 0), (0, 1), (-1, 0)]
+            if (x + dx, y + dy) in self.house.cells
+        )
 
     def matches_partial(self) -> bool:
         return all(constraint(self.house) for constraint in self.partial_constraints)
@@ -105,22 +121,50 @@ class LayoutSearch:
         return all(constraint(self.house) for constraint in self.final_constraints)
 
     def find_solutions(self) -> Iterator[House]:
-        seen_signatures: set[tuple[int, int, tuple[Tuple[int, int, str, int], ...]]] = set()
-        yield from self._backtrack(0, seen_signatures)
+        seen_signatures: set[tuple[int, int, tuple[Tuple[int, int, str, int], ...]]] = (
+            set()
+        )
+        yield from self._backtrack(seen_signatures)
 
     def _place_room_and_recurse(
-        self, room: Room, x: int, y: int, cell_index: int, seen: set[tuple[int, int, tuple[Tuple[int, int, str, int], ...]]]
+        self,
+        room: Room,
+        x: int,
+        y: int,
+        seen: set[tuple[int, int, tuple[Tuple[int, int, str, int], ...]]],
     ) -> Iterator[House]:
         self.house.place_room(x, y, room)
+        added = self._add_to_boundary(x, y)
         if self.matches_partial():
-            yield from self._backtrack(cell_index + 1, seen)
+            yield from self._backtrack(seen)
+        self._remove_from_boundary(added)
         self.house.remove_room(x, y)
 
+    def _add_to_boundary(self, x: int, y: int) -> set[tuple[int, int]]:
+        added: set[tuple[int, int]] = set()
+        for _, nx, ny in self.house.nearby_coords(x, y):
+            if not self.house.has_room(nx, ny) and (nx, ny) not in self.boundary:
+                added.add((nx, ny))
+        self.boundary.extend(added)
+        self.boundary.sort(key=self._boundary_key)
+        return added
+
+    def _remove_from_boundary(self, coords: set[tuple[int, int]]) -> None:
+        if not coords:
+            return
+        keep = [p for p in self.boundary if p not in coords]
+        self.boundary.clear()
+        self.boundary.extend(keep)
+
     def _try_room_placements(
-        self, base_room: Room, x: int, y: int, cell_index: int, seen: set[tuple[int, int, tuple[Tuple[int, int, str, int], ...]]]
+        self,
+        base_room: Room,
+        x: int,
+        y: int,
+        seen: set[tuple[int, int, tuple[Tuple[int, int, str, int], ...]]],
     ) -> Iterator[House]:
         if base_room.doors == FULL_DOOR_MASK:
-            yield from self._place_room_and_recurse(base_room, x, y, cell_index, seen)
+            yield from self._place_room_and_recurse(base_room, x, y, seen)
             return
         seen_masks: set[int] = set()
         for rotation in range(4):
@@ -129,32 +173,44 @@ class LayoutSearch:
             if mask in seen_masks:
                 continue
             seen_masks.add(mask)
-            yield from self._place_room_and_recurse(rotated_room, x, y, cell_index, seen)
+            yield from self._place_room_and_recurse(rotated_room, x, y, seen)
+
+    def _would_expose(self, x: int, y: int) -> bool:
+        for direction, nx, ny in self.house.nearby_coords(x, y):
+            room = self.house.get_room(nx, ny)
+            if (
+                room is not None
+                and not room.allow_exposed_doors
+                and bool(room.doors & OPPOSITE_DIRECTION[direction])
+            ):
+                return True
+        return False
 
     def _all_rooms_placed(self) -> bool:
         return all(count == 0 for count in self.room_counts.values())
 
     def _backtrack(
         self,
-        cell_index: int,
         seen: set[tuple[int, int, tuple[Tuple[int, int, str, int], ...]]],
     ) -> Iterator[House]:
-        if cell_index == len(self.fill_positions):
+        if self._all_rooms_placed():
             if self.matches_final():
                 signature = canonical_layout_signature(self.house)
                 if signature not in seen:
                     seen.add(signature)
                     yield self.house.clone()
             return
-        x, y = self.fill_positions[cell_index]
-        can_place_room = not self.house.cells or self._has_adjacent_room(x, y)
-        if can_place_room:
-            for room in self.unique_rooms:
-                count = self.room_counts.get(room, 0)
-                if count == 0:
-                    continue
-                self.room_counts[room] = count - 1
-                yield from self._try_room_placements(room, x, y, cell_index, seen)
-                self.room_counts[room] = count
+        if not self.boundary:
+            return
+        x, y = self.boundary.pop()
+        for room in self.unique_rooms:
+            count = self.room_counts.get(room, 0)
+            if count == 0:
+                continue
+            self.room_counts[room] = count - 1
+            yield from self._try_room_placements(room, x, y, seen)
+            self.room_counts[room] = count
         if self.matches_partial():
-            yield from self._backtrack(cell_index + 1, seen)
+            if not self._check_exposed or not self._would_expose(x, y):
+                yield from self._backtrack(seen)
+        self.boundary.append((x, y))

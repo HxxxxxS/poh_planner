@@ -14,7 +14,7 @@ from constraints import (
     DoorMatchingConstraint,
     NoExposedDoorsConstraint,
 )
-from model import Direction, Room
+from model import Direction, House, Room
 from render import format_legend, legend_entries, render_text
 from search import LayoutSearch
 
@@ -88,8 +88,8 @@ def _load_room_catalog() -> Tuple[dict[str, Room], dict[str, str]]:
 ROOM_CATALOG, ALIAS_LOOKUP = _load_room_catalog()
 
 DEFAULT_ROOM_COUNTS: dict[str, int] = {
-#    "Parlour": 1,
-#    "Kitchen": 1,
+    #    "Parlour": 1,
+    #    "Kitchen": 1,
 }
 CONSTRUCTION_LEVEL_LIMITS: list[tuple[int, int, int]] = [
     (1, 3, 24),
@@ -115,20 +115,31 @@ CONSTRUCTION_LEVEL_LIMITS: list[tuple[int, int, int]] = [
 DEFAULT_CONSTRUCTION_LEVEL = 99
 ENTRANCE_ROOM = ROOM_CATALOG.get(
     "Garden",
-    Room("Garden", Direction.N | Direction.E | Direction.S | Direction.W, allow_exposed_doors=True),
+    Room(
+        "Garden",
+        Direction.N | Direction.E | Direction.S | Direction.W,
+        allow_exposed_doors=True,
+    ),
 )
 
 
 def _door_mask_to_string(value: Direction) -> str:
     parts: list[str] = []
-    for symbol, direction in (("N", Direction.N), ("E", Direction.E), ("S", Direction.S), ("W", Direction.W)):
+    for symbol, direction in (
+        ("N", Direction.N),
+        ("E", Direction.E),
+        ("S", Direction.S),
+        ("W", Direction.W),
+    ):
         if bool(value & direction):
             parts.append(symbol)
     return "".join(parts) or "<none>"
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate POH layouts with constraint checking.")
+    parser = argparse.ArgumentParser(
+        description="Generate POH layouts with constraint checking."
+    )
     parser.add_argument("--width", type=int, default=7, help="House width in tiles.")
     parser.add_argument("--height", type=int, default=7, help="House height in tiles.")
     parser.add_argument(
@@ -163,6 +174,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--list-rooms",
         action="store_true",
         help="Print usage and list available room types, then exit.",
+    )
+    parser.add_argument(
+        "--max-solutions",
+        type=int,
+        default=0,
+        help="Stop after finding N solutions (0 = find all).",
     )
     return parser
 
@@ -216,7 +233,9 @@ def _parse_coordinate(token: str) -> tuple[int, int]:
     return int(x_raw.strip()), int(y_raw.strip())
 
 
-def _relative_to_absolute(rel_x: int, rel_y: int, width: int, height: int) -> tuple[int, int]:
+def _relative_to_absolute(
+    rel_x: int, rel_y: int, width: int, height: int
+) -> tuple[int, int]:
     center_x = (width - 1) // 2
     center_y = (height - 1) // 2
     return center_x + rel_x, center_y + rel_y
@@ -224,7 +243,9 @@ def _relative_to_absolute(rel_x: int, rel_y: int, width: int, height: int) -> tu
 
 def _validate_within_bounds(x: int, y: int, width: int, height: int) -> None:
     if not (0 <= x < width and 0 <= y < height):
-        raise ValueError(f"Coordinate ({x},{y}) outside house dimensions {width}x{height}")
+        raise ValueError(
+            f"Coordinate ({x},{y}) outside house dimensions {width}x{height}"
+        )
 
 
 def build_pinned_rooms(
@@ -309,8 +330,12 @@ def main() -> None:
             entrance_pos = _parse_coordinate(args.entrance)
         else:
             entrance_pos = default_entrance
-        _validate_within_bounds(entrance_pos[0], entrance_pos[1], args.width, args.height)
-        pinned_rooms, pinned_counts = build_pinned_rooms(args.pin_room, args.width, args.height, entrance_pos)
+        _validate_within_bounds(
+            entrance_pos[0], entrance_pos[1], args.width, args.height
+        )
+        pinned_rooms, pinned_counts = build_pinned_rooms(
+            args.pin_room, args.width, args.height, entrance_pos
+        )
         counts = build_room_selection(args.room)
         for name, pinned_count in pinned_counts.items():
             counts[name] = max(counts.get(name, 0), pinned_count)
@@ -329,9 +354,21 @@ def main() -> None:
     preplaced = [(entrance_pos[0], entrance_pos[1], ENTRANCE_ROOM)] + [
         (coord[0], coord[1], room) for coord, room in pinned_rooms.items()
     ]
-    search = LayoutSearch(args.width, args.height, rooms, partial_constraints, final_constraints, preplaced)
+    search = LayoutSearch(
+        args.width,
+        args.height,
+        rooms,
+        partial_constraints,
+        final_constraints,
+        preplaced,
+    )
     start_time = time.monotonic()
-    solutions = list(search.find_solutions())
+    solutions: list[House] = []
+    limit = args.max_solutions or None
+    for solution in search.find_solutions():
+        solutions.append(solution)
+        if limit and len(solutions) >= limit:
+            break
     elapsed = time.monotonic() - start_time
     if not solutions:
         print("No layout satisfies the constraints.")
