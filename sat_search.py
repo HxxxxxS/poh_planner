@@ -237,7 +237,6 @@ class CpSatSearch:
         for x, y, room in self.preplaced:
             idx = self._type_idx(room)
             model.Add(tv[x, y] == idx)
-            model.Add(rv[x, y] == 0)
 
     def _type_idx(self, room: Room) -> int:
         for i, r in enumerate(self._unique, start=1):

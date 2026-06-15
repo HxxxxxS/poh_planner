@@ -5,6 +5,7 @@ import json
 import re
 import time
 from collections import Counter, defaultdict
+from itertools import product
 from pathlib import Path
 from typing import Iterable, Tuple
 
@@ -17,7 +18,7 @@ from constraints import (
 from local_search import LocalSearch
 from model import Direction, House, Room
 from render import format_legend, legend_entries, render_text
-from search import LayoutSearch
+from search import LayoutSearch, canonical_layout_signature
 
 
 SCRIPT_DIR = Path(__file__).parent
@@ -134,6 +135,17 @@ def _door_mask_to_string(value: Direction) -> str:
         if bool(value & direction):
             parts.append(symbol)
     return "".join(parts) or "<none>"
+
+
+def _unique_rotations(room: Room) -> list[int]:
+    seen: set[int] = set()
+    rots: list[int] = []
+    for r in range(4):
+        mask = int(room.rotated(r).doors)
+        if mask not in seen:
+            seen.add(mask)
+            rots.append(r)
+    return rots
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -414,24 +426,19 @@ def main() -> None:
         near_rooms.add(_resolve_room_name(name))
     partial_constraints = build_partial_constraints()
     final_constraints = build_final_constraints(args.allow_exposed)
-    preplaced = [(entrance_pos[0], entrance_pos[1], ENTRANCE_ROOM)] + [
-        (coord[0], coord[1], room) for coord, room in pinned_rooms.items()
-    ]
-    if args.method == "local":
-        search = LocalSearch(
-            args.width,
-            args.height,
-            rooms,
-            partial_constraints,
-            final_constraints,
-            preplaced,
-            goal=goal,
-            near_rooms=near_rooms,
-            entrance_pos=entrance_pos,
-        )
-    elif args.method == "sat":
+    entrance_entry = (entrance_pos[0], entrance_pos[1], ENTRANCE_ROOM)
+    pinned_list = list(pinned_rooms.items())
+    limit = args.max_solutions or None
+
+    start_time = time.monotonic()
+    solutions: list[House] = []
+
+    if args.method == "sat":
         from sat_search import CpSatSearch
 
+        preplaced = [entrance_entry] + [
+            (coord[0], coord[1], room) for coord, room in pinned_list
+        ]
         search = CpSatSearch(
             args.width,
             args.height,
@@ -443,30 +450,59 @@ def main() -> None:
             near_rooms=near_rooms,
             entrance_pos=entrance_pos,
         )
-    else:
-        search = LayoutSearch(
-            args.width,
-            args.height,
-            rooms,
-            partial_constraints,
-            final_constraints,
-            preplaced,
-            goal=goal,
-            near_rooms=near_rooms,
-            entrance_pos=entrance_pos,
-        )
-    start_time = time.monotonic()
-    solutions: list[House] = []
-    limit = args.max_solutions or None
-    if args.method == "sat":
         sat_max = limit or 100
-        find_kwargs = dict(time_limit=args.time_limit, max_solutions=sat_max)
+        for solution in search.find_solutions(
+            time_limit=args.time_limit, max_solutions=sat_max
+        ):
+            solutions.append(solution)
+            if limit and len(solutions) >= limit:
+                break
     else:
-        find_kwargs = {}
-    for solution in search.find_solutions(**find_kwargs):
-        solutions.append(solution)
-        if limit and len(solutions) >= limit:
-            break
+        if pinned_list:
+            variants = [_unique_rotations(room) for _, room in pinned_list]
+        else:
+            variants = [[]]
+        seen_sigs: set = set()
+        for rot_combo in product(*variants):
+            rotated_pinned = [
+                (coord[0], coord[1], room.rotated(rot))
+                for (coord, room), rot in zip(pinned_list, rot_combo)
+            ]
+            preplaced = [entrance_entry] + rotated_pinned
+            if args.method == "local":
+                search = LocalSearch(
+                    args.width,
+                    args.height,
+                    rooms,
+                    partial_constraints,
+                    final_constraints,
+                    preplaced,
+                    goal=goal,
+                    near_rooms=near_rooms,
+                    entrance_pos=entrance_pos,
+                )
+            else:
+                search = LayoutSearch(
+                    args.width,
+                    args.height,
+                    rooms,
+                    partial_constraints,
+                    final_constraints,
+                    preplaced,
+                    goal=goal,
+                    near_rooms=near_rooms,
+                    entrance_pos=entrance_pos,
+                )
+            for house in search.find_solutions():
+                sig = canonical_layout_signature(house)
+                if sig in seen_sigs:
+                    continue
+                seen_sigs.add(sig)
+                solutions.append(house)
+                if limit and len(solutions) >= limit:
+                    break
+            if limit and len(solutions) >= limit:
+                break
     if goal != "none" or near_rooms:
         solutions.sort(key=lambda h: _solution_key(h, entrance_pos, near_rooms, goal))
     elapsed = time.monotonic() - start_time
