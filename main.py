@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import re
 import sys
+import threading
 import time
 from collections import Counter, defaultdict
 from itertools import product
@@ -445,6 +447,52 @@ def _print_json(
     print(json.dumps(data, indent=2))
 
 
+class Progress:
+    def __init__(self):
+        self._count = 0
+        self._done = False
+        self._start = 0.0
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        self._count = 0
+        self._done = False
+        self._start = time.monotonic()
+        self._thread = threading.Thread(target=self._spin, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._done = True
+        if self._thread:
+            self._thread.join(timeout=2)
+
+    def found(self, n: int) -> None:
+        self._count = n
+
+    def _spin(self) -> None:
+        chars = itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+        while not self._done:
+            elapsed = time.monotonic() - self._start
+            c = next(chars)
+            count = self._count
+            if count:
+                print(
+                    f"\r{c} Found {count} solutions, {elapsed:.1f}s  ",
+                    file=sys.stderr,
+                    end="",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"\r{c} Searching... {elapsed:.1f}s  ",
+                    file=sys.stderr,
+                    end="",
+                    flush=True,
+                )
+            time.sleep(0.1)
+        print("\r" + " " * 50 + "\r", file=sys.stderr, end="", flush=True)
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -497,6 +545,8 @@ def main() -> None:
 
     start_time = time.monotonic()
     solutions: list[House] = []
+    progress = Progress()
+    progress.start()
 
     if args.method == "sat":
         from sat_search import CpSatSearch
@@ -520,12 +570,9 @@ def main() -> None:
             time_limit=args.time_limit, max_solutions=sat_max
         ):
             solutions.append(solution)
-            if len(solutions) % 10 == 0:
-                print(f"\rFound {len(solutions)} solutions...", file=sys.stderr, end="")
+            progress.found(len(solutions))
             if limit and len(solutions) >= limit:
                 break
-        if solutions:
-            print(f"\rFound {len(solutions)} solutions.         ", file=sys.stderr)
     else:
         if pinned_list:
             variants = [_unique_rotations(room) for _, room in pinned_list]
@@ -568,18 +615,12 @@ def main() -> None:
                     continue
                 seen_sigs.add(sig)
                 solutions.append(house)
-                if len(solutions) % 10 == 0:
-                    print(
-                        f"\rFound {len(solutions)} solutions...",
-                        file=sys.stderr,
-                        end="",
-                    )
+                progress.found(len(solutions))
                 if limit and len(solutions) >= limit:
                     break
             if limit and len(solutions) >= limit:
                 break
-        if solutions:
-            print(f"\rFound {len(solutions)} solutions.         ", file=sys.stderr)
+    progress.stop()
     if goal != "none" or near_rooms:
         solutions.sort(key=lambda h: _solution_key(h, entrance_pos, near_rooms, goal))
     elapsed = time.monotonic() - start_time
