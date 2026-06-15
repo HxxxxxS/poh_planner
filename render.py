@@ -107,6 +107,29 @@ def render_side_by_side(
     return "\n".join(result)
 
 
+def calc_cols(
+    sizes: list[tuple[int, int]],
+    term_width: int,
+    gap: int = 4,
+    show_labels: bool = False,
+) -> int:
+    label_pad = 4 if show_labels else 0
+    widths = [label_pad + 3 * w for w, _ in sizes]
+    if not widths:
+        return 1
+    for cols in range(len(widths), 0, -1):
+        ok = True
+        for i in range(0, len(widths), cols):
+            batch = widths[i : i + cols]
+            total = sum(batch) + gap * (len(batch) - 1)
+            if total > term_width:
+                ok = False
+                break
+        if ok:
+            return cols
+    return 1
+
+
 def legend_entries(house: House) -> dict[str, set[str]]:
     entries: dict[str, set[str]] = defaultdict(set)
     for room in house.cells.values():

@@ -4,6 +4,7 @@ import argparse
 import itertools
 import json
 import re
+import shutil
 import sys
 import threading
 import time
@@ -22,6 +23,7 @@ from local_search import LocalSearch
 from model import Direction, House, Room
 from render import (
     adjacency_count,
+    calc_cols,
     format_legend,
     layout_dims,
     legend_entries,
@@ -266,6 +268,11 @@ def build_parser() -> argparse.ArgumentParser:
         "-q",
         action="store_true",
         help="Disable progress indicator (spinner) output.",
+    )
+    parser.add_argument(
+        "--cols",
+        default="auto",
+        help="Number of side-by-side columns ('auto' or a positive integer).",
     )
     return parser
 
@@ -757,7 +764,18 @@ def main() -> None:
     legend_lines = format_legend(legend_map)
 
     if len(solutions) > 1:
-        cols = 2
+        if args.cols == "auto":
+            term_width = shutil.get_terminal_size().columns
+            cols = calc_cols(
+                [layout_dims(s) for s in solutions],
+                term_width,
+                show_labels=args.verbose,
+            )
+        else:
+            cols = int(args.cols)
+            if cols < 1:
+                print("--cols must be 'auto' or a positive integer")
+                return
         legend_fits = len(solutions) % cols != 0 and bool(legend_lines)
         for i in range(0, len(solutions), cols):
             batch = solutions[i : i + cols]
@@ -765,7 +783,7 @@ def main() -> None:
                 render_side_by_side(
                     batch,
                     entrance_pos,
-                    cols=cols,
+                    cols=len(batch),
                     show_labels=args.verbose,
                     show_empty=args.verbose,
                     legend=legend_lines if legend_fits else None,

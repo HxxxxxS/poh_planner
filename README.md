@@ -118,7 +118,7 @@ JSON output for programmatic consumption:
 python main.py --room Portal=4 --allow-exposed --json
 ```
 
-When multiple solutions are found (more than 1), they are rendered side by side for easy comparison. Use `--max-solutions` to limit how many are displayed.
+When multiple solutions are found (more than 1), they are rendered side by side for easy comparison. Columns are auto-detected from terminal width; use `--cols N` to override or `--cols 1` for single-column output. Use `--max-solutions` to limit how many are displayed.
 
 Verbose mode adds grid labels, empty tile markers, a summary table, and extended statistics:
 
@@ -185,7 +185,7 @@ usage: main.py [-h] [--width WIDTH] [--height HEIGHT]
                [--list-rooms] [--max-solutions MAX_SOLUTIONS]
                [--method {backtracking,local,sat}] [--time-limit TIME_LIMIT]
                [--goal {none,compact,filled}] [--near-entrance NEAR_ENTRANCE]
-               [--json] [--verbose]
+               [--group GROUP] [--json] [--verbose] [--quiet] [--cols COLS]
 
 Generate POH layouts with constraint checking.
 
@@ -219,9 +219,14 @@ options:
   --near-entrance NEAR_ENTRANCE
                         Guide search to place this room type close to the
                         entrance (repeatable).
+  --group GROUP         Override room families. Syntax: NAME:weight=WEIGHT |
+                        NAME:exclude=Room1,Room2 | NAME:WEIGHT=Room1,Room2
   --json                Output solutions as JSON instead of text.
   --verbose, -v         Show grid labels, empty tile markers, summary table,
                         and extended statistics.
+  --quiet, -q           Disable progress indicator (spinner) output.
+  --cols COLS           Number of side-by-side columns ('auto' or a positive
+                        integer).
 ```
 
 ---
