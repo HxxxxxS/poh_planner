@@ -746,7 +746,22 @@ def main() -> None:
         solutions.sort(key=lambda h: _solution_key(h, entrance_pos, near_rooms, goal))
     elapsed = time.monotonic() - start_time
     if not solutions:
-        print("No layout satisfies the constraints.")
+        if not args.allow_exposed:
+            by_doors = Counter()
+            for name, cnt in counts.items():
+                ndoors = int(ROOM_CATALOG[name].doors).bit_count()
+                by_doors[ndoors] += cnt
+            ndoors = int(ENTRANCE_ROOM.doors).bit_count()
+            by_doors[ndoors] += 1
+            parts = [f"{n}× {d}-door" for d, n in sorted(by_doors.items())]
+            print(
+                f"No layout satisfies the no-exposed-doors constraint ({', '.join(parts)})."
+            )
+            print(
+                "Tip: --allow-exposed relaxes the rule that every door must face another room."
+            )
+        else:
+            print("No layout satisfies the constraints.")
         print(f"Elapsed: {elapsed:.2f}s")
         return
 

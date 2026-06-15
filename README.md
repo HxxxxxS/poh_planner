@@ -1,8 +1,8 @@
 # POH Planner
 
-A constraint-based backtracking solver that generates valid Player-Owned House layouts for Old School RuneScape.
+A constraint-based layout generator for Old School RuneScape Player-Owned Houses.
 
-Specify room types and counts, and the solver finds all valid arrangements that satisfy door matching, connectivity, and no-exposed-doors constraints.
+Specify room types and counts, and the solver finds valid arrangements. By default it enforces a strict no-exposed-doors rule; pass `--allow-exposed` to relax it.
 
 Output includes coordinate axes, entrance markers (double-line borders), per-solution metrics, and optional summary tables and JSON export.
 
@@ -66,10 +66,10 @@ Basic layout with 4 portal chambers:
 python main.py --room Portal=4
 ```
 
-Mix different room types:
+Mix different room types (add `--allow-exposed` if the strict door-facing rule causes failures):
 
 ```
-python main.py --room Parlour --room Kitchen --room Portal=2 --room SkillHall=1
+python main.py --room Parlour --room Kitchen --room Portal=2 --room SkillHall=1 --allow-exposed
 ```
 
 Stop after finding a few solutions:
@@ -128,6 +128,22 @@ python main.py --room Portal=4 --allow-exposed --max-solutions 10 --verbose
 
 ---
 
+## Troubleshooting
+
+**"No layout satisfies the constraints"** — This usually means the **no-exposed-doors** rule makes your room mix unsatisfiable. Every door must face another room, so single-door rooms (portal chambers, costume rooms, throne rooms, treasure rooms) can only be leaves in the connectivity tree.
+
+If you hit this, the solver prints a door-type breakdown (e.g., `3× 1-door, 8× 2-door, ...`). A common fix is adjusting the room counts so there are enough multi-door rooms to connect everything.
+
+The easiest workaround:
+
+```
+python main.py --room Portal=4 --allow-exposed
+```
+
+`--allow-exposed` disables the strict no-exposed-doors rule. Doors can face empty tiles — the solver still enforces door matching and connectivity. Use this when you just want a functional layout without worrying about tree topology.
+
+---
+
 ## Rooms
 
 25 room types are defined in `rooms.json`, each with:
@@ -152,7 +168,7 @@ Each door configuration is a bitmask (N=1, E=2, S=4, W=8). Rooms are rotatable d
 
 **Connectivity** — All rooms must form a single connected component.
 
-**No Exposed Doors** — Doors must not face empty tiles or the grid boundary (disable with `--allow-exposed`). All rooms are subject to this rule — no exemptions.
+**No Exposed Doors** — Doors must not face empty tiles or the grid boundary (disable with `--allow-exposed`). All rooms are subject to this rule — no exemptions. This constraint is strict: every door must be matched, so single-door rooms (portal chambers, costume rooms, throne rooms, treasure rooms) can only be leaf nodes. Most random room mixes will fail under this rule — use `--allow-exposed` unless you specifically need unbroken door-facing.
 
 ---
 
