@@ -239,6 +239,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show grid labels, empty tile markers, summary table, and extended statistics.",
     )
+    parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Disable progress indicator (spinner) output.",
+    )
     return parser
 
 
@@ -448,13 +454,16 @@ def _print_json(
 
 
 class Progress:
-    def __init__(self):
+    def __init__(self, quiet: bool = False):
         self._count = 0
         self._done = False
         self._start = 0.0
         self._thread: threading.Thread | None = None
+        self._quiet = quiet
 
     def start(self) -> None:
+        if self._quiet:
+            return
         self._count = 0
         self._done = False
         self._start = time.monotonic()
@@ -462,6 +471,8 @@ class Progress:
         self._thread.start()
 
     def stop(self) -> None:
+        if self._quiet:
+            return
         self._done = True
         if self._thread:
             self._thread.join(timeout=2)
@@ -545,7 +556,7 @@ def main() -> None:
 
     start_time = time.monotonic()
     solutions: list[House] = []
-    progress = Progress()
+    progress = Progress(quiet=args.quiet)
     progress.start()
 
     if args.method == "sat":

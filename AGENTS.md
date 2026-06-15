@@ -73,6 +73,8 @@ main.py
 
     Keep solver independent of specific constraints
 
+    Pass --quiet when running main.py from an automated agent to suppress the progress indicator spinner (each tick prints to stderr and fills context windows with noise). Only omit for interactive debugging of the indicator itself.
+
 ## Never
 
     Hardcode constraint assumptions in search logic
