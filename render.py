@@ -88,8 +88,9 @@ def render_side_by_side(
     total_lines = max(max_lines, n_legend) if legend_lines else max_lines
 
     for r in renders:
+        pw = max(len(l) for l in r) if r else 0
         while len(r) < total_lines:
-            r.append("")
+            r.append(" " * pw)
     n_missing = total_lines - len(legend_lines)
     if n_missing > 0:
         legend_lines = [" " * legend_w] * n_missing + legend_lines
