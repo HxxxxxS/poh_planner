@@ -19,6 +19,7 @@ class LocalSearch:
         goal: str = "none",
         near_rooms: set[str] | None = None,
         entrance_pos: tuple[int, int] | None = None,
+        families: dict[str, tuple[int, set[str]]] | None = None,
     ) -> None:
         self.width = width
         self.height = height
@@ -29,6 +30,10 @@ class LocalSearch:
         self._near_rooms = near_rooms or set()
         self._entrance = entrance_pos
         self._filled = goal == "filled"
+        self._families = families or {}
+        self._fam_members: dict[str, set[str]] = {
+            n: m for n, (_, m) in self._families.items()
+        }
 
     def find_solutions(self) -> Iterator[House]:
         seen: set[frozenset[tuple[int, int, str, int]]] = set()
@@ -54,8 +59,17 @@ class LocalSearch:
         for x, y, r in self.preplaced:
             h.place_room(x, y, r)
         remaining = list(self.rooms)
-        if self._near_rooms:
-            remaining.sort(key=lambda r: r.name not in self._near_rooms)
+        if self._families or self._near_rooms:
+
+            def _fam_order(r: Room) -> int:
+                if r.name in self._near_rooms:
+                    return 0
+                for _, members in self._fam_members.items():
+                    if r.name in members:
+                        return 1
+                return 2
+
+            remaining.sort(key=_fam_order)
         else:
             random.shuffle(remaining)
         while remaining:
@@ -93,6 +107,18 @@ class LocalSearch:
                         c += 1
                 elif not bool(n.doors & OPPOSITE_DIRECTION[d]):
                     c += 1
+        for fam_name, (weight, members) in self._families.items():
+            pos = [(x, y) for (x, y), r in h.iter_rooms() if r.name in members]
+            if len(pos) < 2:
+                continue
+            adj = sum(
+                1
+                for i, (x1, y1) in enumerate(pos)
+                for (x2, y2) in pos[i + 1 :]
+                if abs(x1 - x2) + abs(y1 - y2) == 1
+            )
+            max_pairs = len(pos) * (len(pos) - 1) // 2
+            c += weight * (max_pairs - adj)
         return c
 
     def _find_exposed(self, h: House) -> list[tuple[int, int, int, int]]:
@@ -128,8 +154,8 @@ class LocalSearch:
             if n is None:
                 if not r.allow_exposed_doors:
                     c += 1
-            elif not bool(n.doors & OPPOSITE_DIRECTION[d]):
-                c += 1
+                elif not bool(n.doors & OPPOSITE_DIRECTION[d]):
+                    c += 1
         return c
 
     def _try_repair_move(
@@ -196,6 +222,22 @@ class LocalSearch:
             if h.has_room(nx, ny)
         )
 
+    def _family_cost(self, h: House) -> int:
+        c = 0
+        for fam_name, (weight, members) in self._families.items():
+            pos = [(x, y) for (x, y), r in h.iter_rooms() if r.name in members]
+            if len(pos) < 2:
+                continue
+            adj = sum(
+                1
+                for i, (x1, y1) in enumerate(pos)
+                for (x2, y2) in pos[i + 1 :]
+                if abs(x1 - x2) + abs(y1 - y2) == 1
+            )
+            max_pairs = len(pos) * (len(pos) - 1) // 2
+            c += weight * (max_pairs - adj)
+        return c
+
     def _repair(self, h: House) -> House | None:
         empty = [
             (x, y)
@@ -206,7 +248,7 @@ class LocalSearch:
         movable = [(x, y) for (x, y), _ in h.iter_rooms() if (x, y) not in self._fixed]
 
         best: House | None = None
-        best_adj = -1
+        best_score: float = float("inf")
 
         for iteration in range(30000):
             cost = self._count_door_cost(h)
@@ -214,12 +256,16 @@ class LocalSearch:
                 if self._components(h) > 1:
                     cost = 100
                 else:
+                    score = 0
                     if self._filled:
-                        adj = self._adjacency_count(h)
-                        if adj > best_adj:
-                            best = h.clone()
-                            best_adj = adj
-                    return h
+                        score -= self._adjacency_count(h)
+                    if self._families:
+                        score += self._family_cost(h) / 10
+                    if score < best_score:
+                        best = h.clone()
+                        best_score = score
+                    if score == 0:
+                        return h
 
             exposed = self._find_exposed(h)
             mismatches = self._find_mismatches(h)
@@ -256,4 +302,4 @@ class LocalSearch:
                     rx, ry = random.choice(movable)
                     self._try_repair_move(h, rx, ry, empty)
 
-        return best if self._filled else None
+        return best if (self._filled or self._families) else None

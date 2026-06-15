@@ -57,14 +57,24 @@ def _normalize_name(name: str) -> str:
     return "".join(words) if words else ""
 
 
-def _load_room_catalog() -> Tuple[dict[str, Room], dict[str, str]]:
+def _load_room_catalog() -> Tuple[
+    dict[str, Room], dict[str, str], dict[str, tuple[int, set[str]]]
+]:
     if not ROOMS_JSON.exists():
         raise FileNotFoundError(f"Missing room catalog {ROOMS_JSON}")
     catalog: dict[str, Room] = {}
     alias_lookup: dict[str, str] = {}
     with open(ROOMS_JSON, encoding="utf-8") as handle:
         raw = json.load(handle)
-    for entry in raw:
+    families_data: dict[str, tuple[int, set[str]]] = {}
+    if isinstance(raw, dict):
+        raw_families = raw.get("families", {})
+        for fam_name, info in raw_families.items():
+            families_data[fam_name] = (info["weight"], set())
+        rooms_raw = raw.get("rooms", [])
+    else:
+        rooms_raw = raw
+    for entry in rooms_raw:
         name = entry["room"]
         canonical = _normalize_name(name)
         doors = entry.get("doors", "")
@@ -83,6 +93,8 @@ def _load_room_catalog() -> Tuple[dict[str, Room], dict[str, str]]:
             seen.add(key)
             normalized_aliases.append(normalized_alias)
         legend = entry.get("legend")
+        fam_names = entry.get("families")
+        families = frozenset(fam_names) if fam_names else frozenset()
         room = Room(
             canonical,
             mask,
@@ -90,15 +102,19 @@ def _load_room_catalog() -> Tuple[dict[str, Room], dict[str, str]]:
             display_name=name,
             aliases=(canonical,) + tuple(normalized_aliases),
             legend=legend,
+            families=families,
         )
         catalog[canonical] = room
         alias_lookup[canonical.casefold()] = canonical
         for alias in normalized_aliases:
             alias_lookup[alias.casefold()] = canonical
-    return catalog, alias_lookup
+        for fn in families:
+            if fn in families_data:
+                families_data[fn][1].add(canonical)
+    return catalog, alias_lookup, families_data
 
 
-ROOM_CATALOG, ALIAS_LOOKUP = _load_room_catalog()
+ROOM_CATALOG, ALIAS_LOOKUP, FAMILIES = _load_room_catalog()
 
 DEFAULT_ROOM_COUNTS: dict[str, int] = {
     #    "Parlour": 1,
@@ -227,6 +243,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="Guide search to place this room type close to the entrance (repeatable).",
+    )
+    parser.add_argument(
+        "--group",
+        action="append",
+        default=[],
+        help="Override room families. Syntax: NAME:weight=WEIGHT | NAME:exclude=Room1,Room2 | NAME:WEIGHT=Room1,Room2",
     )
     parser.add_argument(
         "--json",
@@ -391,7 +413,84 @@ def _solution_key(
             for (x, y), room in house.cells.items()
             if room.name in near
         )
+    if FAMILIES:
+        fam_bonus = 0
+        seen: set[tuple[int, int]] = set()
+        for (x, y), room in house.cells.items():
+            if not room.families:
+                continue
+            for _, nx, ny in house.nearby_coords(x, y):
+                if (nx, ny) in seen:
+                    continue
+                n = house.get_room(nx, ny)
+                if n is None or not n.families:
+                    continue
+                shared = room.families & n.families
+                for fn in shared:
+                    if fn in FAMILIES:
+                        fam_bonus += FAMILIES[fn][0]
+            seen.add((x, y))
+        score -= fam_bonus
     return score
+
+
+def _parse_group_override(token: str) -> tuple:
+    if ":" not in token:
+        raise ValueError(
+            f"Invalid --group syntax: {token!r} (expected NAME:action=value)"
+        )
+    name, rest = token.split(":", 1)
+    name = name.strip()
+    if "=" not in rest:
+        raise ValueError(
+            f"Invalid --group syntax: {token!r} (expected NAME:action=value)"
+        )
+    key, value = rest.split("=", 1)
+    key = key.strip()
+    value = value.strip()
+    if key == "weight":
+        return ("weight", name, int(value))
+    elif key == "exclude":
+        return ("exclude", name, [r.strip() for r in value.split(",") if r.strip()])
+    else:
+        weight = int(key)
+        rooms = [r.strip() for r in value.split(",") if r.strip()]
+        return ("new", name, weight, rooms)
+
+
+def _resolve_families(
+    json_families: dict[str, tuple[int, set[str]]],
+    overrides: list[str],
+) -> dict[str, tuple[int, set[str]]]:
+    result = {
+        name: (weight, set(members))
+        for name, (weight, members) in json_families.items()
+    }
+    for token in overrides:
+        op = _parse_group_override(token)
+        if op[0] == "weight":
+            name = op[1]
+            if name in result:
+                w, m = result[name]
+                result[name] = (op[2], m)
+        elif op[0] == "exclude":
+            name = op[1]
+            if name in result:
+                w, m = result[name]
+                for room_name in op[2]:
+                    resolved = ALIAS_LOOKUP.get(_normalize_name(room_name).casefold())
+                    if resolved:
+                        m.discard(resolved)
+        elif op[0] == "new":
+            name = op[1]
+            weight = op[2]
+            members: set[str] = set()
+            for room_name in op[3]:
+                resolved = ALIAS_LOOKUP.get(_normalize_name(room_name).casefold())
+                if resolved:
+                    members.add(resolved)
+            result[name] = (weight, members)
+    return result
 
 
 def _print_usage_and_rooms(parser: argparse.ArgumentParser) -> None:
@@ -554,6 +653,8 @@ def main() -> None:
     pinned_list = list(pinned_rooms.items())
     limit = args.max_solutions or None
 
+    families = _resolve_families(FAMILIES, args.group)
+
     start_time = time.monotonic()
     solutions: list[House] = []
     progress = Progress(quiet=args.quiet)
@@ -585,12 +686,12 @@ def main() -> None:
             if limit and len(solutions) >= limit:
                 break
     else:
+        configs: list[tuple] = [()]
         if pinned_list:
             variants = [_unique_rotations(room) for _, room in pinned_list]
-        else:
-            variants = [[]]
+            configs = list(product(*variants))
         seen_sigs: set = set()
-        for rot_combo in product(*variants):
+        for rot_combo in configs:
             rotated_pinned = [
                 (coord[0], coord[1], room.rotated(rot))
                 for (coord, room), rot in zip(pinned_list, rot_combo)
@@ -607,6 +708,7 @@ def main() -> None:
                     goal=goal,
                     near_rooms=near_rooms,
                     entrance_pos=entrance_pos,
+                    families=families,
                 )
             else:
                 search = LayoutSearch(
@@ -619,6 +721,7 @@ def main() -> None:
                     goal=goal,
                     near_rooms=near_rooms,
                     entrance_pos=entrance_pos,
+                    families=families,
                 )
             for house in search.find_solutions():
                 sig = canonical_layout_signature(house)

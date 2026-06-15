@@ -75,6 +75,18 @@ main.py
 
     Pass --quiet when running main.py from an automated agent to suppress the progress indicator spinner (each tick prints to stderr and fills context windows with noise). Only omit for interactive debugging of the indicator itself.
 
+# Performance
+
+## SAT solver + families (Apr 2025)
+
+Family clustering terms (`_add_family_terms`) added O(families × cells × types) BoolVars and implication chains to the SAT model. This created a multi-objective optimization (filled + family adjacency) that CP-SAT struggled to prove optimality for — 85x slowdown on a 21-room config (180s → 2.12s).
+
+**Fix**: Family terms are excluded from the SAT solver. The SAT solver optimizes for filled/compact only (fast). After finding solutions, `_solution_key` in main.py computes a family bonus and sorts solutions by combined score. This keeps SAT fast while still ranking family-clustered solutions first.
+
+## \_fam_counts bug (search.py)
+
+`_fam_counts` was initialized once from `room_counts` but never decremented as rooms were placed. This meant `_family_bonus` always used initial counts, slightly inflating the family bonus. Fixed by decrementing/incrementing `_fam_counts` alongside `room_counts` in `_backtrack`.
+
 ## Never
 
     Hardcode constraint assumptions in search logic

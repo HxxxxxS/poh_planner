@@ -61,6 +61,19 @@
     - Metrics helpers: `layout_dims`, `adjacency_count`, `near_entrance_dist`
     - `adjacency_count` fixed to return single-counted edges (÷2)
 
+11. **Family-based room clustering** (`rooms.json`, `model.py`, `main.py`, `search.py`, `sat_search.py`, `local_search.py`):
+    - Rooms can belong to named families with configurable weight/strength
+    - Families are defined in `rooms.json` (e.g., garden weight=10, portal weight=8, dungeon weight=6, hall weight=5, teleport weight=3)
+    - CLI `--group NAME:weight=W` overrides weight, `--group NAME:exclude=Room` removes members, `--group NAME:W=Room1,Room2` creates ad-hoc families
+    - Backtracking: `_boundary_key` sorts cells adjacent to active-family members first; room ordering prioritizes incomplete families
+    - SAT: `_add_family_terms` creates BoolVars per family per adjacent pair, weighted by family weight in the objective
+    - Local: `_init_compact` places family rooms consecutively; `_family_cost` adds proximity penalty to repair loop
+    - Rooms can belong to multiple families (e.g., Portal chamber is both portal and teleport)
+    - Families with <2 total members are skipped (no clustering possible)
+    - Merge resolution: `rooms.json` defaults → CLI overrides stack on top
+
+12. **Fixed pre-existing bug**: `product(*[[]])` evaluates to `product([])` which yields zero iterations, causing the `else` branch in `main()` (backtracking/local solvers without pinned rooms) to never execute. Fixed by using `configs: list[tuple] = [()]` as the default rotation set when no pinned rooms exist.
+
 # Future Ideas
 
 ## ~~ 1. Symmetry breaking for identical rooms ~~

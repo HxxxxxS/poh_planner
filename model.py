@@ -39,6 +39,7 @@ class Room:
     display_name: str | None = None
     aliases: tuple[str, ...] = field(default_factory=tuple)
     legend: str | None = None
+    families: frozenset[str] = field(default_factory=frozenset)
 
     def __post_init__(self) -> None:
         if self.display_name is None:
@@ -58,6 +59,7 @@ class Room:
             self.display_name,
             self.aliases,
             self.legend,
+            self.families,
         )
 
 

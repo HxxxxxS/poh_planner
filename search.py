@@ -73,6 +73,7 @@ class LayoutSearch:
         goal: str = "none",
         near_rooms: set[str] | None = None,
         entrance_pos: tuple[int, int] | None = None,
+        families: dict[str, tuple[int, set[str]]] | None = None,
     ) -> None:
         self.width = width
         self.height = height
@@ -92,6 +93,17 @@ class LayoutSearch:
         self.unique_rooms = sorted(self.room_counts.keys(), key=rotation_variant_count)
         if self._near_rooms:
             self.unique_rooms.sort(key=lambda r: r.name not in self._near_rooms)
+        self._families = families or {}
+        self._fam_members: dict[str, set[str]] = {
+            n: m for n, (_, m) in self._families.items()
+        }
+        self._fam_counts: dict[str, int] = {}
+        for fam_name, members in self._fam_members.items():
+            c = 0
+            for room, count in self.room_counts.items():
+                if room.name in members:
+                    c += count
+            self._fam_counts[fam_name] = c
         if preplaced:
             for x, y, room in preplaced:
                 self.house.place_room(x, y, room)
@@ -136,8 +148,20 @@ class LayoutSearch:
                         break
         return c
 
+    def _family_bonus(self, x: int, y: int) -> int:
+        bonus = 0
+        for _, nx, ny in self.house.nearby_coords(x, y):
+            n = self.house.get_room(nx, ny)
+            if n is None:
+                continue
+            for fam_name, members in self._fam_members.items():
+                if n.name in members and self._fam_counts.get(fam_name, 0) > 0:
+                    bonus += self._families[fam_name][0]
+        return bonus
+
     def _boundary_key(self, pos: tuple[int, int]) -> tuple:
         x, y = pos
+        fam = self._family_bonus(x, y)
         if self._near_rooms and self._entrance:
             dist = abs(x - self._entrance[0]) + abs(y - self._entrance[1])
         else:
@@ -148,8 +172,8 @@ class LayoutSearch:
                 for _, nx, ny in self.house.nearby_coords(x, y)
                 if self.house.has_room(nx, ny)
             )
-            return (-dist, occ, self._count_fits(x, y))
-        return (-dist, self._count_fits(x, y))
+            return (fam, -dist, occ, self._count_fits(x, y))
+        return (fam, -dist, self._count_fits(x, y))
 
     def matches_partial(self) -> bool:
         return all(constraint(self.house) for constraint in self.partial_constraints)
@@ -257,12 +281,32 @@ class LayoutSearch:
         if not self.boundary:
             return
         x, y = self.boundary.pop()
+        if self._families:
+            active: set[str] = set()
+            for fam_name, members in self._fam_members.items():
+                has_placed = any(r.name in members for _, r in self.house.iter_rooms())
+                has_remaining = self._fam_counts.get(fam_name, 0) > 0
+                if has_placed and has_remaining:
+                    active.add(fam_name)
+            if active:
+                self.unique_rooms.sort(
+                    key=lambda r: (
+                        not any(r.name in self._fam_members[f] for f in active)
+                    )
+                )
         for room in self.unique_rooms:
             count = self.room_counts.get(room, 0)
             if count == 0:
                 continue
             self.room_counts[room] = count - 1
+            dec_fams: list[str] = []
+            for fam_name, members in self._fam_members.items():
+                if room.name in members and self._fam_counts.get(fam_name, 0) > 0:
+                    self._fam_counts[fam_name] -= 1
+                    dec_fams.append(fam_name)
             yield from self._try_room_placements(room, x, y, seen)
+            for fam_name in dec_fams:
+                self._fam_counts[fam_name] += 1
             self.room_counts[room] = count
         placed = sum(self.room_counts.values())
         if placed <= len(self.boundary) and self.matches_partial():
