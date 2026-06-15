@@ -4,33 +4,35 @@ A constraint-based backtracking solver that generates valid Player-Owned House l
 
 Specify room types and counts, and the solver finds all valid arrangements that satisfy door matching, connectivity, and no-exposed-doors constraints.
 
+Output includes coordinate axes, entrance markers (double-line borders), per-solution metrics, and optional summary tables and JSON export.
+
 ---
 
 ## Example output:
 
 ```
-$ source .venv/bin/activate && python main.py --method sat --max-solutions 1 --goal filled \
---pin-room 1,0=Garden --pin-room -1,0=Garden --pin-room 0,1=Garden --pin-room 0,-1=Garden \
---room Portal=5 --room Nexus --room Gallery --room Costume --room Chapel --room Dining \
---room Kitchen --room Skill --room Bedroom=2 --room Study --room Workshop \
---near-entrance Nexus --near-entrance Gallery;
+$ uv run python main.py --method sat --max-solutions 1 --goal filled \
+  --pin-room 1,0=Garden --pin-room -1,0=Garden --pin-room 0,1=Garden --pin-room 0,-1=Garden \
+  --room Portal=5 --room Nexus --room Gallery --room Costume --room Chapel --room Dining \
+  --room Kitchen --room Skill --room Bedroom=2 --room Study --room Workshop \
+  --near-entrance Nexus --near-entrance Gallery
 
 Solution 1:
-   ┌─┐┌─┐
-   │O││P│
-   └ ┘└ ┘
-┌─┐┌ ┐┌ ┐┌─┐
-│K  N  G  B│
-└ ┘└ ┘└ ┘└ ┘
-┌ ┐┌ ┐┌ ┐┌ ┐┌─┐┌─┐
-│D  G  G  G  A  P│
-└ ┘└ ┘└ ┘└ ┘└─┘└─┘
-┌ ┐┌ ┐┌ ┐┌ ┐┌─┐
-│W││Y  G  H  P│
-└ ┘└ ┘└ ┘└ ┘└─┘
-┌ ┐┌ ┐┌ ┐┌ ┐
-│P││C  B││P│
-└─┘└─┘└─┘└─┘
+     ┌─┐┌─┐┌─┐┌─┐
+     │O  D  B││P│
+     └─┘└ ┘└ ┘└ ┘
+  ┌─┐┌─┐┌ ┐┌ ┐┌ ┐┌─┐
+  │P  W  N  G  H  P│
+  └─┘└─┘└ ┘└ ┘└ ┘└─┘
+  ┌─┐┌─┐┌ ┐╔ ╗┌ ┐┌─┐
+  │P  A  G  G  G  P│
+  └─┘└─┘└ ┘╚ ╝└ ┘└─┘
+        ┌ ┐┌ ┐┌ ┐
+        │Y  G  B│
+        └ ┘└ ┘└─┘
+        ┌ ┐┌ ┐
+        │K  C│
+        └─┘└─┘
 
 A = Achievement gallery
 B = Bedroom
@@ -45,7 +47,7 @@ P = Portal chamber
 W = Workshop
 Y = Study
 
-Elapsed: 0.78s
+Found 1 solution in 0.93s
 ```
 
 ---
@@ -110,6 +112,20 @@ python main.py --room Portal=5 --room Kitchen --goal filled
 
 `--goal compact` minimizes bounding-box area; `--goal filled` maximizes internal adjacencies (penalizes branches and thin corridors).
 
+JSON output for programmatic consumption:
+
+```
+python main.py --room Portal=4 --allow-exposed --json
+```
+
+When multiple solutions are found (more than 1), they are rendered side by side for easy comparison. Use `--max-solutions` to limit how many are displayed.
+
+Verbose mode adds grid labels, empty tile markers, a summary table, and extended statistics:
+
+```
+python main.py --room Portal=4 --allow-exposed --max-solutions 10 --verbose
+```
+
 ---
 
 ## Rooms
@@ -147,7 +163,7 @@ Each door configuration is a bitmask (N=1, E=2, S=4, W=8). Rooms are rotatable d
 - `search.py` — Backtracking solver with dynamic boundary set
 - `local_search.py` — Iterative repair / local search solver
 - `sat_search.py` — OR-Tools CP-SAT solver (fastest for large configs)
-- `render.py` — ASCII box-drawing layout output
+- `render.py` — ASCII box-drawing layout output with coordinate axes, entrance markers, automatic side-by-side, and metrics helpers
 - `main.py` — CLI entry point
 
 The solver uses a flood-fill boundary approach: only cells adjacent to placed rooms are candidate positions, and the empty branch prunes when leaving a cell empty would expose a door.
@@ -169,6 +185,7 @@ usage: main.py [-h] [--width WIDTH] [--height HEIGHT]
                [--list-rooms] [--max-solutions MAX_SOLUTIONS]
                [--method {backtracking,local,sat}] [--time-limit TIME_LIMIT]
                [--goal {none,compact,filled}] [--near-entrance NEAR_ENTRANCE]
+               [--json] [--verbose]
 
 Generate POH layouts with constraint checking.
 
@@ -202,6 +219,9 @@ options:
   --near-entrance NEAR_ENTRANCE
                         Guide search to place this room type close to the
                         entrance (repeatable).
+  --json                Output solutions as JSON instead of text.
+  --verbose, -v         Show grid labels, empty tile markers, summary table,
+                        and extended statistics.
 ```
 
 ---

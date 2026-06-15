@@ -50,6 +50,17 @@
    - Post-hoc sort subtracts adjacency count so more-filled layouts sort first
    - Effectively penalizes 1-room-wide branches and thin corridors
 
+10. **Output rendering improvements** (`render.py`, `main.py`):
+    - **Entrance marker**: Garden tiles use double-line box-drawing chars (╔═╗/╚═╝/║)
+    - **Coordinate axes**: Row numbers on left, column numbers in header
+    - **Summary line per solution**: `Solution N (W×H, adj: N, near-dist: N)`
+    - **Progress indicator**: `\rFound N solutions...` to stderr during search
+    - **`--verbose` / `-v`**: Summary table of all solutions + extended stats footer
+    - **`--json`**: Machine-readable JSON output with rooms, positions, doors, metrics
+    - **`--side-by-side [N]`**: Multiple layouts printed horizontally (optional column count)
+    - Metrics helpers: `layout_dims`, `adjacency_count`, `near_entrance_dist`
+    - `adjacency_count` fixed to return single-counted edges (÷2)
+
 # Future Ideas
 
 ## ~~ 1. Symmetry breaking for identical rooms ~~

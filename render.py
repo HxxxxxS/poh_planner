@@ -16,23 +16,75 @@ def room_symbol(room: Room) -> str:
     return "?"
 
 
-def render_text(house: House) -> str:
+def render_text(
+    house: House,
+    entrance_pos: tuple[int, int] | None = None,
+    show_labels: bool = False,
+    show_empty: bool = False,
+) -> str:
     if house.width == 0 or house.height == 0 or not house.cells:
         return "<empty house>"
     xs = [x for x, _ in house.cells.keys()]
     ys = [y for _, y in house.cells.keys()]
     min_x, max_x = min(xs), max(xs)
     min_y, max_y = min(ys), max(ys)
+
+    ox, oy = entrance_pos if entrance_pos else (0, 0)
+    min_dx = min_x - ox
+    max_dx = max_x - ox
+    min_dy = min_y - oy
+    max_dy = max_y - oy
+
+    label_width = max(2, len(str(min_dy)), len(str(max_dy)))
     lines: list[str] = []
-    for y in range(min_y, max_y + 1):
+
+    if show_labels:
+        hdr = " " * label_width
+        for x in range(min_dx, max_dx + 1):
+            hdr += str(x).center(3)
+        lines.append(hdr)
+
+    for dy in range(min_dy, max_dy + 1):
+        y = dy + oy
         row_fragments = ["", "", ""]
-        for x in range(min_x, max_x + 1):
-            top, middle, bottom = _render_tile(house, x, y)
+        for x in range(min_dx, max_dx + 1):
+            abs_x = x + ox
+            is_entrance = entrance_pos is not None and (abs_x, y) == entrance_pos
+            top, middle, bottom = _render_tile(house, abs_x, y, is_entrance, show_empty)
             row_fragments[0] += top
             row_fragments[1] += middle
             row_fragments[2] += bottom
-        lines.extend(row_fragments)
+        blank = " " * label_width
+        row_label = str(dy).rjust(label_width) if show_labels else blank
+        lines.append(blank + row_fragments[0])
+        lines.append(row_label + row_fragments[1])
+        lines.append(blank + row_fragments[2])
     return "\n".join(lines)
+
+
+def render_side_by_side(
+    houses: list[House],
+    entrance_pos: tuple[int, int] | None = None,
+    cols: int = 2,
+    gap: int = 4,
+    show_labels: bool = False,
+    show_empty: bool = False,
+) -> str:
+    renders = [
+        render_text(h, entrance_pos, show_labels, show_empty).split("\n")
+        for h in houses
+    ]
+    max_lines = max(len(r) for r in renders)
+    for r in renders:
+        while len(r) < max_lines:
+            r.append("")
+
+    result: list[str] = []
+    for i in range(0, len(houses), cols):
+        batch = renders[i : i + cols]
+        for li in range(max_lines):
+            result.append((" " * gap).join(r[li] for r in batch))
+    return "\n".join(result)
 
 
 def legend_entries(house: House) -> dict[str, set[str]]:
@@ -58,21 +110,58 @@ def format_legend(entries: dict[str, Iterable[str]]) -> list[str]:
     return lines
 
 
-def _render_tile(house: House, x: int, y: int) -> tuple[str, str, str]:
+def layout_dims(house: House) -> tuple[int, int]:
+    xs = [x for x, _ in house.cells]
+    ys = [y for _, y in house.cells]
+    if not xs or not ys:
+        return (0, 0)
+    return (max(xs) - min(xs) + 1, max(ys) - min(ys) + 1)
+
+
+def adjacency_count(house: House) -> int:
+    count = 0
+    for x, y in house.cells:
+        for _, nx, ny in house.nearby_coords(x, y):
+            if house.has_room(nx, ny):
+                count += 1
+    return count // 2
+
+
+def near_entrance_dist(
+    house: House, entrance: tuple[int, int], near_rooms: set[str]
+) -> int:
+    ex, ey = entrance
+    total = 0
+    for (x, y), room in house.cells.items():
+        if room.name in near_rooms:
+            total += abs(x - ex) + abs(y - ey)
+    return total
+
+
+def _render_tile(
+    house: House, x: int, y: int, is_entrance: bool = False, show_empty: bool = True
+) -> tuple[str, str, str]:
     room = house.get_room(x, y)
     if room is None:
+        if show_empty:
+            return "\u00b7 \u00b7", "   ", "\u00b7 \u00b7"
         return "   ", "   ", "   "
 
-    def door(direction: Direction) -> str:
-        return " " if has_door(house, room, x, y, direction) else _wall_segment(direction)
+    if is_entrance:
+        tl, tr, bl, br = "╔", "╗", "╚", "╝"
+        wh, wv = "═", "║"
+    else:
+        tl, tr, bl, br = "┌", "┐", "└", "┘"
+        wh, wv = "─", "│"
 
-    top = f"┌{door(Direction.N)}┐"
-    middle = (
-        f"{door(Direction.W)}"
-        f"{room_symbol(room)}"
-        f"{door(Direction.E)}"
-    )
-    bottom = f"└{door(Direction.S)}┘"
+    def door(direction: Direction) -> str:
+        if has_door(house, room, x, y, direction):
+            return " "
+        return wh if direction in (Direction.N, Direction.S) else wv
+
+    top = f"{tl}{door(Direction.N)}{tr}"
+    middle = f"{door(Direction.W)}{room_symbol(room)}{door(Direction.E)}"
+    bottom = f"{bl}{door(Direction.S)}{br}"
     return top, middle, bottom
 
 
@@ -81,12 +170,10 @@ def has_door(house: House, room: Room, x: int, y: int, direction: Direction) -> 
         return False
     if bool(room.doors & direction):
         return True
-    neighbor = house.get_room(x + direction_vector(direction)[0], y + direction_vector(direction)[1])
+    neighbor = house.get_room(
+        x + direction_vector(direction)[0], y + direction_vector(direction)[1]
+    )
     return neighbor is not None and bool(neighbor.doors & _opposite(direction))
-
-
-def _wall_segment(direction: Direction) -> str:
-    return "─" if direction in (Direction.N, Direction.S) else "│"
 
 
 def direction_vector(direction: Direction) -> tuple[int, int]:

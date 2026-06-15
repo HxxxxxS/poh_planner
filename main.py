@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 import time
 from collections import Counter, defaultdict
 from itertools import product
@@ -17,7 +18,15 @@ from constraints import (
 )
 from local_search import LocalSearch
 from model import Direction, House, Room
-from render import format_legend, legend_entries, render_text
+from render import (
+    adjacency_count,
+    format_legend,
+    layout_dims,
+    legend_entries,
+    near_entrance_dist,
+    render_side_by_side,
+    render_text,
+)
 from search import LayoutSearch, canonical_layout_signature
 
 
@@ -217,6 +226,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Guide search to place this room type close to the entrance (repeatable).",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output solutions as JSON instead of text.",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show grid labels, empty tile markers, summary table, and extended statistics.",
+    )
     return parser
 
 
@@ -380,6 +400,51 @@ def _print_usage_and_rooms(parser: argparse.ArgumentParser) -> None:
             print(f"  {display}{legend}")
 
 
+def _print_json(
+    solutions: list[House],
+    entrance: tuple[int, int],
+    near_rooms: set[str],
+    elapsed: float,
+    args: argparse.Namespace,
+) -> None:
+    data: dict = {
+        "solutions": [],
+        "stats": {
+            "total": len(solutions),
+            "elapsed_seconds": elapsed,
+            "method": args.method,
+            "width": args.width,
+            "height": args.height,
+        },
+    }
+    for s in solutions:
+        w, h = layout_dims(s)
+        rooms_list: list[dict] = []
+        for (x, y), room in s.cells.items():
+            rooms_list.append(
+                {
+                    "x": x,
+                    "y": y,
+                    "type": room.name,
+                    "doors": _door_mask_to_string(room.doors),
+                }
+            )
+        entry: dict = {
+            "rooms": rooms_list,
+            "metrics": {
+                "width": w,
+                "height": h,
+                "adjacency_count": adjacency_count(s),
+            },
+        }
+        if near_rooms:
+            entry["metrics"]["near_entrance_dist"] = near_entrance_dist(
+                s, entrance, near_rooms
+            )
+        data["solutions"].append(entry)
+    print(json.dumps(data, indent=2))
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -455,8 +520,12 @@ def main() -> None:
             time_limit=args.time_limit, max_solutions=sat_max
         ):
             solutions.append(solution)
+            if len(solutions) % 10 == 0:
+                print(f"\rFound {len(solutions)} solutions...", file=sys.stderr, end="")
             if limit and len(solutions) >= limit:
                 break
+        if solutions:
+            print(f"\rFound {len(solutions)} solutions.         ", file=sys.stderr)
     else:
         if pinned_list:
             variants = [_unique_rotations(room) for _, room in pinned_list]
@@ -499,10 +568,18 @@ def main() -> None:
                     continue
                 seen_sigs.add(sig)
                 solutions.append(house)
+                if len(solutions) % 10 == 0:
+                    print(
+                        f"\rFound {len(solutions)} solutions...",
+                        file=sys.stderr,
+                        end="",
+                    )
                 if limit and len(solutions) >= limit:
                     break
             if limit and len(solutions) >= limit:
                 break
+        if solutions:
+            print(f"\rFound {len(solutions)} solutions.         ", file=sys.stderr)
     if goal != "none" or near_rooms:
         solutions.sort(key=lambda h: _solution_key(h, entrance_pos, near_rooms, goal))
     elapsed = time.monotonic() - start_time
@@ -510,10 +587,49 @@ def main() -> None:
         print("No layout satisfies the constraints.")
         print(f"Elapsed: {elapsed:.2f}s")
         return
-    for idx, solution in enumerate(solutions, start=1):
-        print(f"Solution {idx}:")
-        print(render_text(solution))
-        print()
+
+    if args.json:
+        _print_json(solutions, entrance_pos, near_rooms, elapsed, args)
+        return
+
+    show_stats = args.verbose
+
+    if len(solutions) > 1:
+        cols = 2
+        for i in range(0, len(solutions), cols):
+            batch = solutions[i : i + cols]
+            print(
+                render_side_by_side(
+                    batch,
+                    entrance_pos,
+                    cols=cols,
+                    show_labels=args.verbose,
+                    show_empty=args.verbose,
+                )
+            )
+            print()
+    else:
+        for idx, solution in enumerate(solutions, start=1):
+            suffix = ""
+            if args.verbose:
+                parts = [f"{layout_dims(solution)[0]}×{layout_dims(solution)[1]}"]
+                parts.append(f"adj: {adjacency_count(solution)}")
+                if near_rooms:
+                    parts.append(
+                        f"near-dist: {near_entrance_dist(solution, entrance_pos, near_rooms)}"
+                    )
+                suffix = f" ({', '.join(parts)})"
+            print(f"Solution {idx}{suffix}:")
+            print(
+                render_text(
+                    solution,
+                    entrance_pos,
+                    show_labels=args.verbose,
+                    show_empty=args.verbose,
+                )
+            )
+            print()
+
     legend_map: defaultdict[str, set[str]] = defaultdict(set)
     for solution in solutions:
         entries = legend_entries(solution)
@@ -523,7 +639,44 @@ def main() -> None:
     if legend_lines:
         print("\n".join(legend_lines))
         print()
-    print(f"Elapsed: {elapsed:.2f}s")
+
+    if show_stats:
+        rows_data: list[tuple[int, str, int, int | None]] = []
+        for idx, s in enumerate(solutions, 1):
+            w, h = layout_dims(s)
+            adj = adjacency_count(s)
+            nd = near_entrance_dist(s, entrance_pos, near_rooms) if near_rooms else None
+            rows_data.append((idx, f"{w}×{h}", adj, nd))
+        idx_w = max(len(str(len(solutions))), 2)
+        size_w = max(len(r[1]) for r in rows_data)
+        adj_w = max(max(len(str(r[2])) for r in rows_data), 3)
+        hdr = f"{'#'.rjust(idx_w)}  {'Size'.rjust(size_w)}  {'Adj'.rjust(adj_w)}"
+        nd_w = 0
+        if near_rooms:
+            nd_w = max(
+                max(len(str(r[3])) for r in rows_data if r[3] is not None),
+                len("Near-d"),
+            )
+            hdr += f"  {'Near-d'.rjust(nd_w)}"
+        print(hdr)
+        print("-" * len(hdr))
+        for idx_str, size_str, adj, nd in rows_data:
+            row = f"{str(idx_str).rjust(idx_w)}  {size_str.rjust(size_w)}  {str(adj).rjust(adj_w)}"
+            if near_rooms:
+                row += f"  {str(nd).rjust(nd_w)}"
+            print(row)
+        print()
+
+    avg_adj = sum(adjacency_count(s) for s in solutions) / len(solutions)
+    footer = f"Found {len(solutions)} solution{'s' if len(solutions) != 1 else ''} in {elapsed:.2f}s"
+    if show_stats:
+        footer += f", avg adj: {avg_adj:.1f}"
+        if near_rooms:
+            avg_nd = sum(
+                near_entrance_dist(s, entrance_pos, near_rooms) for s in solutions
+            ) / len(solutions)
+            footer += f", avg near-dist: {avg_nd:.1f}"
+    print(footer)
 
 
 if __name__ == "__main__":
