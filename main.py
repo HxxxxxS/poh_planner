@@ -635,8 +635,16 @@ def main() -> None:
 
     show_stats = args.verbose
 
+    legend_map: defaultdict[str, set[str]] = defaultdict(set)
+    for solution in solutions:
+        entries = legend_entries(solution)
+        for symbol, names in entries.items():
+            legend_map[symbol].update(names)
+    legend_lines = format_legend(legend_map)
+
     if len(solutions) > 1:
         cols = 2
+        legend_fits = len(solutions) % cols != 0 and bool(legend_lines)
         for i in range(0, len(solutions), cols):
             batch = solutions[i : i + cols]
             print(
@@ -646,8 +654,12 @@ def main() -> None:
                     cols=cols,
                     show_labels=args.verbose,
                     show_empty=args.verbose,
+                    legend=legend_lines if legend_fits else None,
                 )
             )
+            print()
+        if not legend_fits and legend_lines:
+            print("\n".join(legend_lines))
             print()
     else:
         for idx, solution in enumerate(solutions, start=1):
@@ -670,16 +682,9 @@ def main() -> None:
                 )
             )
             print()
-
-    legend_map: defaultdict[str, set[str]] = defaultdict(set)
-    for solution in solutions:
-        entries = legend_entries(solution)
-        for symbol, names in entries.items():
-            legend_map[symbol].update(names)
-    legend_lines = format_legend(legend_map)
-    if legend_lines:
-        print("\n".join(legend_lines))
-        print()
+        if legend_lines:
+            print("\n".join(legend_lines))
+            print()
 
     if show_stats:
         rows_data: list[tuple[int, str, int, int | None]] = []

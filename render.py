@@ -69,21 +69,39 @@ def render_side_by_side(
     gap: int = 4,
     show_labels: bool = False,
     show_empty: bool = False,
+    legend: list[str] | None = None,
+    legend_gap: int = 4,
 ) -> str:
     renders = [
         render_text(h, entrance_pos, show_labels, show_empty).split("\n")
         for h in houses
     ]
     max_lines = max(len(r) for r in renders)
+
+    legend_lines: list[str] = []
+    legend_w = 0
+    if legend:
+        legend_lines = list(legend)
+        legend_w = max(len(l) for l in legend_lines) if legend_lines else 0
+    n_legend = len(legend_lines)
+    n_rows = (len(houses) + cols - 1) // cols
+    total_lines = max(max_lines, n_legend) if legend_lines else max_lines
+
     for r in renders:
-        while len(r) < max_lines:
+        while len(r) < total_lines:
             r.append("")
+    while len(legend_lines) < total_lines:
+        legend_lines.append(" " * legend_w)
 
     result: list[str] = []
     for i in range(0, len(houses), cols):
         batch = renders[i : i + cols]
-        for li in range(max_lines):
-            result.append((" " * gap).join(r[li] for r in batch))
+        row_idx = i // cols
+        for li in range(total_lines):
+            parts = [r[li] for r in batch]
+            if legend_lines and row_idx == n_rows - 1 and len(batch) < cols:
+                parts.append(legend_lines[li])
+            result.append((" " * gap).join(parts))
     return "\n".join(result)
 
 
