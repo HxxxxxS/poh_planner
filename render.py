@@ -90,8 +90,9 @@ def render_side_by_side(
     for r in renders:
         while len(r) < total_lines:
             r.append("")
-    while len(legend_lines) < total_lines:
-        legend_lines.append(" " * legend_w)
+    n_missing = total_lines - len(legend_lines)
+    if n_missing > 0:
+        legend_lines = [" " * legend_w] * n_missing + legend_lines
 
     result: list[str] = []
     for i in range(0, len(houses), cols):
