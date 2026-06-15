@@ -470,7 +470,7 @@ class Progress:
         self._count = n
 
     def _spin(self) -> None:
-        chars = itertools.cycle(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+        chars = itertools.cycle(["-", "\\", "|", "/"])
         while not self._done:
             elapsed = time.monotonic() - self._start
             c = next(chars)
