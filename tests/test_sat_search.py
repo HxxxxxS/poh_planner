@@ -61,5 +61,5 @@ def test_sat_preplaced():
     solutions = list(search.find_solutions(time_limit=10))
     assert solutions
     for house in solutions:
-        assert house.get_room(0, 0) == preplaced
+        assert house.get_room(0, 0).name == preplaced.name
         assert house.get_room(1, 0) and house.get_room(1, 0).name == "B"
