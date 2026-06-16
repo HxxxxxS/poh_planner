@@ -97,7 +97,7 @@ class LocalSearch:
         c = 0
         for (x, y), r in h.iter_rooms():
             if self._near_rooms and r.name in self._near_rooms and self._entrance:
-                c += abs(x - self._entrance[0]) + abs(y - self._entrance[1])
+                c += max(abs(x - self._entrance[0]), abs(y - self._entrance[1]))
             for d, nx, ny in h.nearby_coords(x, y):
                 if not bool(r.doors & d):
                     continue

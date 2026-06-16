@@ -416,7 +416,7 @@ def _solution_key(
     if near:
         ex, ey = entrance
         score += sum(
-            abs(x - ex) + abs(y - ey)
+            max(abs(x - ex), abs(y - ey))
             for (x, y), room in house.cells.items()
             if room.name in near
         )

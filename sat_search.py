@@ -371,7 +371,7 @@ class CpSatSearch:
 
         terms: list[cp_model.LinearExpr] = []
         for x, y in cells:
-            dist = abs(x - ex) + abs(y - ey)
+            dist = max(abs(x - ex), abs(y - ey))
             b = model.NewBoolVar(f"cobj_{x}_{y}")
             model.Add(tv[x, y] != 0).OnlyEnforceIf(b)
             model.Add(tv[x, y] == 0).OnlyEnforceIf(b.Not())
@@ -415,7 +415,7 @@ class CpSatSearch:
                 if r.name in self._near_rooms
             }
             for x, y in cells:
-                dist = abs(x - ex) + abs(y - ey)
+                dist = max(abs(x - ex), abs(y - ey))
                 for ti in near_types:
                     nb = model.NewBoolVar(f"fnear_{near_types[ti]}_{x}_{y}")
                     model.Add(tv[x, y] == ti).OnlyEnforceIf(nb)

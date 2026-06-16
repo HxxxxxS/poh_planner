@@ -177,7 +177,7 @@ def near_entrance_dist(
     total = 0
     for (x, y), room in house.cells.items():
         if room.name in near_rooms:
-            total += abs(x - ex) + abs(y - ey)
+            total += max(abs(x - ex), abs(y - ey))
     return total
 
 

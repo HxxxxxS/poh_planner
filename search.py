@@ -163,7 +163,7 @@ class LayoutSearch:
         x, y = pos
         fam = self._family_bonus(x, y)
         if self._near_rooms and self._entrance:
-            dist = abs(x - self._entrance[0]) + abs(y - self._entrance[1])
+            dist = max(abs(x - self._entrance[0]), abs(y - self._entrance[1]))
         else:
             dist = 0
         if self._compact:

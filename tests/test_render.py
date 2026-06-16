@@ -266,11 +266,11 @@ def test_near_entrance_dist_zero():
 def test_near_entrance_dist_two():
     h = House(5, 5)
     h.place_room(3, 3, Room("Kitchen", Direction(0)))
-    assert near_entrance_dist(h, (1, 1), {"Kitchen"}) == 4
+    assert near_entrance_dist(h, (1, 1), {"Kitchen"}) == 2
 
 
 def test_near_entrance_dist_multiple():
     h = House(5, 5)
     h.place_room(1, 1, Room("Kitchen", Direction(0)))
     h.place_room(3, 3, Room("PortalChamber", Direction(0)))
-    assert near_entrance_dist(h, (1, 1), {"Kitchen", "PortalChamber"}) == 4
+    assert near_entrance_dist(h, (1, 1), {"Kitchen", "PortalChamber"}) == 2
